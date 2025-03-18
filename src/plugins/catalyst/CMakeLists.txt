@@ -7,11 +7,14 @@ endif()
 
 add_library(geogate_catalyst ${SRCFILES})
 
-message(INFO "catalyst_DIR = ${catalyst_DIR}")
 if(catalyst_FOUND)
+  message(INFO " catalyst_DIR = ${catalyst_DIR}")
   include_directories(${catalyst_DIR}/../../../include/catalyst-${catalyst_VERSION})
   if(EXISTS ${catalyst_DIR}/../../../include/catalyst-${catalyst_VERSION}/conduit)
     include_directories(${catalyst_DIR}/../../../include/catalyst-${catalyst_VERSION}/conduit)
+  endif()
+  if(CONDUIT_FOUND)
+    include_directories(${CONDUIT_INCLUDE_DIRS})
   endif()
 endif()
 

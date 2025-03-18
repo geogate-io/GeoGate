@@ -21,6 +21,13 @@ option(GEOGATE_USE_PYTHON   "Support to Interact with Python"                  O
 ### Set required packages
 ###############################################################################
 
+# Find MPI
+if(NOT MPI_FOUND)
+  find_package(MPI REQUIRED)
+endif()
+add_definitions(${MPI_Fortran_COMPILE_FLAGS})
+include_directories(${MPI_Fortran_INCLUDE_PATH})
+
 # Find ESMF
 if(NOT ESMF_FOUND)
   find_package(ESMF 8.8.0 REQUIRED)
