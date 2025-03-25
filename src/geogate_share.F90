@@ -8,9 +8,10 @@ module geogate_share
   use ESMF, only: ESMF_LogFoundError, ESMF_FAILURE, ESMF_LogWrite
   use ESMF, only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_INFO, ESMF_SUCCESS
   use ESMF, only: ESMF_GeomType_Flag, ESMF_State, ESMF_StateGet
-  use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldWrite, ESMF_FieldWriteVTK
-  use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleCreate
-  use ESMF, only: ESMF_MAXSTR, ESMF_KIND_R8
+  use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldCreate
+  use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleCreate, ESMF_FieldBundleAdd
+  use ESMF, only: ESMF_AttributeGet, ESMF_Mesh, ESMF_MeshLoc
+  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_INDEX_DELOCAL, ESMF_MAXSTR, ESMF_KIND_R8
   use ESMF, only: ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
   use ESMF, only: ESMF_StateGet, ESMF_StateItem_Flag, ESMF_STATEITEM_STATE
 
@@ -122,7 +123,17 @@ module geogate_share
     integer, intent(out), optional :: rc
 
     ! local variables
-    integer :: fieldCount
+    integer :: n
+    integer :: fieldCount, lrank
+    integer :: ungriddedCount
+    integer :: ungriddedLBound(1)
+    integer :: ungriddedUBound(1)
+    logical :: isPresent
+    type(ESMF_Field) :: oldField, newField
+    type(ESMF_MeshLoc) :: meshloc
+    type(ESMF_Mesh) :: lmesh
+    real(ESMF_KIND_R8), pointer :: dataptr1d(:)
+    real(ESMF_KIND_R8), pointer :: dataptr2d(:,:)
     character(ESMF_MAXSTR), allocatable :: lfieldNameList(:)
     character(len=*), parameter :: subname = trim(modName)//':(FB_init_pointer) '
     !---------------------------------------------------------------------------
@@ -130,24 +141,89 @@ module geogate_share
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
-    ! Create empty FBout
+    ! Create empty field bundle, FBout
     FBout = ESMF_FieldBundleCreate(name=trim(name), rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-    ! Get fields from state
+    ! Get list of fields from state
     call ESMF_StateGet(StateIn, itemCount=fieldCount, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
+
     allocate(lfieldNameList(fieldCount))
+
     call ESMF_StateGet(StateIn, itemNameList=lfieldNameList, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-    ! Create field bundle
-    !if (fieldCount > 0) then
-       ! Get mesh from first non-scalar field in StateIn (assumes all the fields have the same mesh)
-       !call ESMF_StateGet(StateIn, itemName=lfieldNameList(1), field=lfield, rc=rc)
-       !if (chkerr(rc,__LINE__,u_FILE_u)) return
-    !end if
+    ! Add them to the FB
+    if (fieldCount > 0) then
+       do n = 1, fieldCount
+          ! Get field from state
+          call ESMF_StateGet(StateIn, itemName=lfieldNameList(n), field=oldField, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
 
+          ! Query mesh location
+          if (n == 1) then
+             call ESMF_FieldGet(oldField, mesh=lmesh, meshloc=meshloc, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+          end if
+
+          ! Check rank of the field
+          call ESMF_FieldGet(oldField, rank=lrank, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          ! Add ungridded dimension to field if rank > 1
+          if (lrank == 2) then
+             ! Determine ungridded lower and upper bounds for field
+             call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
+                  purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             if (ungriddedCount /= 1) then
+                call ESMF_LogWrite(trim(subname)//": ERROR ungriddedCount for "// &
+                     trim(lfieldnamelist(n))//" must be 1 if rank is 2 ", ESMF_LOGMSG_ERROR)
+                rc = ESMF_FAILURE
+                return
+             end if
+
+             ! Set ungridded dimensions for field
+             call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
+                  purpose="Instance", valueList=ungriddedLBound, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+             call ESMF_AttributeGet(oldField, name="UngriddedUBound", convention="NUOPC", &
+                  purpose="Instance", valueList=ungriddedUBound, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             ! Get 2d pointer for field
+             call ESMF_FieldGet(oldField, farrayptr=dataptr2d, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             ! Create new field with an ungridded dimension
+             newField = ESMF_FieldCreate(lmesh, dataptr2d, ESMF_INDEX_DELOCAL, &
+                  meshloc=meshloc, name=lfieldNameList(n), &
+                  ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, gridToFieldMap=(/2/), rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          else if (lrank == 1) then
+             ! Get 1d pointer for field
+             call ESMF_FieldGet(oldField, farrayptr=dataptr1d, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             ! Create new field without an ungridded dimension
+             newField = ESMF_FieldCreate(lmesh, dataptr1d, ESMF_INDEX_DELOCAL, &
+                  meshloc=meshloc, name=lfieldNameList(n), rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          else
+             call ESMF_LogWrite(trim(subname)//": Rank can be 1 or 2!", ESMF_LOGMSG_ERROR)
+             rc = ESMF_FAILURE
+             return
+          end if
+
+          ! Add field to FB
+          call ESMF_FieldBundleAdd(FBout, (/ newfield /), rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+       end do ! fieldCount
+    end if
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 

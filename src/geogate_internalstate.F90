@@ -103,7 +103,6 @@ module geogate_internalstate
        call ESMF_StateGet(importState, nestedFlag=.false., itemNameList=importItemNameList, itemTypeList=importItemTypeList, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-
        ! Set flag if nested state is found
        do i = 1, importItemCount
           if (importItemTypeList(i) == ESMF_STATEITEM_STATE) then
