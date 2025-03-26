@@ -656,6 +656,9 @@ contains
     integer :: n
     integer :: itemCount
     logical :: isPresent, meshCreated
+    integer :: gridToFieldMapCount, ungriddedCount
+    integer, allocatable :: gridToFieldMap(:)
+    integer, allocatable :: ungriddedLBound(:), ungriddedUBound(:)
     type(ESMF_Field) :: field, meshField
     type(ESMF_Grid) :: grid
     type(ESMF_Mesh) :: mesh
@@ -689,7 +692,7 @@ contains
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Query field for its geom type
-       call ESMF_FieldGet(field, geomtype=geomtype, name=fieldName, rc=rc)
+       call ESMF_FieldGet(field, geomtype=geomtype, status=fieldStatus, name=fieldName, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Input fields contains grid - need to convert to mesh
@@ -723,11 +726,56 @@ contains
           ! Check field
           call ESMF_FieldGet(meshField, status=fieldStatus, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          if (fieldStatus == ESMF_FIELDSTATUS_GRIDSET ) then
+          if (fieldStatus == ESMF_FIELDSTATUS_GRIDSET) then
              call ESMF_LogWrite(trim(subname)//": ERROR fieldStatus not complete ", ESMF_LOGMSG_ERROR)
              rc = ESMF_FAILURE
              return
           end if ! fieldStatus
+
+       else
+          ! Check for field status
+          if (fieldStatus == ESMF_FIELDSTATUS_GRIDSET) then
+             ! Check attribute in the field
+             call ESMF_AttributeGet(field, name="GridToFieldMap", convention="NUOPC", &
+               purpose="Instance", itemCount=gridToFieldMapCount, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             allocate(gridToFieldMap(gridToFieldMapCount))
+
+             call ESMF_AttributeGet(field, name="GridToFieldMap", convention="NUOPC", &
+               purpose="Instance", valueList=gridToFieldMap, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ungriddedCount = 0
+
+             call ESMF_AttributeGet(field, name="UngriddedLBound", convention="NUOPC", &
+               purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             allocate(ungriddedLBound(ungriddedCount), ungriddedUBound(ungriddedCount))
+
+             ! Query ungridded dimensions
+             if (ungriddedCount > 0) then
+                call ESMF_AttributeGet(field, name="UngriddedLBound", convention="NUOPC", &
+                  purpose="Instance", valueList=ungriddedLBound, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                call ESMF_AttributeGet(field, name="UngriddedUBound", convention="NUOPC", &
+                  purpose="Instance", valueList=ungriddedUBound, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             end if
+
+             ! Add as a new field to the state
+             call NUOPC_Realize(state, trim(fieldName), typekind=ESMF_TYPEKIND_R8, gridToFieldMap=gridToFieldMap, &
+               ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Clean memory
+             deallocate(gridToFieldMap)
+             deallocate(ungriddedLBound)
+             deallocate(ungriddedUBound)
+          end if ! fieldStatus
+
        end if ! geomType
     end do ! itemCount
 
