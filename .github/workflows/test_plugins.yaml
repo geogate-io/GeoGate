@@ -24,6 +24,11 @@ jobs:
         sudo apt-get -qq install build-essential binutils-dev gfortran
       shell: bash
 
+    - name: Checkout Component Repository
+      uses: actions/checkout@v3
+      with:
+        path: ${{ github.workspace }}/app/geogate
+        
     - name: Create Spack Environment and Install Dependencies
       run: |
         $GITHUB_ACTION_PATH/scripts/install_deps.sh 
