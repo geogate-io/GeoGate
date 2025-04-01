@@ -57,9 +57,9 @@ jobs:
         make install
         export LMOD_ROOT=${PWD}/install
         cd ..
-        source ${LMOD_ROOT}/init/profile
-        ln -sf ${LMOD_ROOT}/init/profile /etc/profile.d/lmod.sh
-        module
+        source ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile
+        ln -sf ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile /etc/profile.d/lmod.sh
+        module -v
 
     - name: Create Spack Environment and Install Dependencies
       run: |
