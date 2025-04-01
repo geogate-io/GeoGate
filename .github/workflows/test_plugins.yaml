@@ -23,10 +23,13 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get -qq install tar unzip file gringo
         sudo apt-get -qq install build-essential binutils-dev gfortran
+        sudo apt-get -qq build-dep lmod
+        lua_ver=$(which lua | xargs realpath -e | xargs basename)
+        sudo apt-get -qq install lib${lua_ver}-dev tcl-dev
       shell: bash
 
     - name: Checkout Component Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         path: ${{ env.install_dir }}/geogate
         
@@ -34,3 +37,11 @@ jobs:
       run: |
         ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh 
       shell: bash
+
+    - name: Restore Dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.install_dir }}/spack
+        key: spack-${{ runner.os }}-${{ inputs.architecture }}-${{ hashFiles('**/spack.lock') }}
+        restore-keys: |
+          spack-${{ runner.os }}-${{ inputs.architecture }}-${{ hashFiles('**/spack.lock') }}
