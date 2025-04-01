@@ -23,6 +23,7 @@ jobs:
         sudo apt-get -qq update
         sudo apt-get -qq install tar unzip file gringo
         sudo apt-get -qq install build-essential binutils-dev gfortran
+        cat /etc/apt/sources.list
         sudo apt-get -qq build-dep lmod
         lua_ver=$(which lua | xargs realpath -e | xargs basename)
         sudo apt-get -qq install lib${lua_ver}-dev tcl-dev
