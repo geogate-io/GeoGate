@@ -24,12 +24,7 @@ jobs:
         sudo apt-get -qq install build-essential binutils-dev gfortran
       shell: bash
 
-    #- name: Concretize Spack Environment Using YAML Specification
-    #  run: |
-    #    $GITHUB_ACTION_PATH/scripts/concretize_deps.sh \
-    #      -a ${{ inputs.architecture }} \
-    #      -c ${{ inputs.compiler }} \
-    #      -d "$(echo "${{ inputs.dependencies }}" | sed -z 's/\n/:/g' | sed 's/:$//')" \
-    #      -i ${{ inputs.dependencies_install_dir }} \
-    #      -r $GITHUB_WORKSPACE
-    #  shell: bash
+    - name: Create Spack Environment and Install Dependencies
+      run: |
+        $GITHUB_ACTION_PATH/scripts/install_deps.sh 
+      shell: bash
