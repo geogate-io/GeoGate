@@ -2,6 +2,8 @@ name: Test plugins
 
 env:
   spack_version: v1.0.0-alpha.2
+  esmf_version: develop
+  compiler_version: latest
 
 on:
   #push:
@@ -12,25 +14,22 @@ on:
   workflow_dispatch:
 
 jobs:
-  set-matrix:
+  build:
     runs-on: ubuntu-24.04
     steps:
-    # Prepare core environment
     - name: Install Core Development Tools
       run: |
         sudo apt-get -qq update
-        sudo apt-get -qq install tar unzip file curl gringo
-        sudo apt-get -qq install build-essential binutils-dev gfortran gdb
-        sudo apt-get -qq install python3-dev
+        sudo apt-get -qq install tar unzip file gringo
+        sudo apt-get -qq install build-essential binutils-dev gfortran
+      shell: bash
 
-    # Concretize Spack test environment 
-    - name: Concretize Spack Environment Using YAML Specification
-      run: |
-        cd ${{ github.workspace }}
-        echo "::group:: Setup Spack"
-        git clone -b ${{ env.spack_version }} https://github.com/spack/spack.git
-        . spack/share/spack/setup-env.sh
-        spack compiler find
-        cat ~/.spack/linux/compilers.yaml
-        spack external find
-        echo "::endgroup::"
+    #- name: Concretize Spack Environment Using YAML Specification
+    #  run: |
+    #    $GITHUB_ACTION_PATH/scripts/concretize_deps.sh \
+    #      -a ${{ inputs.architecture }} \
+    #      -c ${{ inputs.compiler }} \
+    #      -d "$(echo "${{ inputs.dependencies }}" | sed -z 's/\n/:/g' | sed 's/:$//')" \
+    #      -i ${{ inputs.dependencies_install_dir }} \
+    #      -r $GITHUB_WORKSPACE
+    #  shell: bash
