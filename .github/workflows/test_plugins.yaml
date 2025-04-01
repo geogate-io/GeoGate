@@ -38,6 +38,7 @@ jobs:
         cd ${{ env.install_dir }}/progs
         wget -c https://sourceforge.net/projects/lmod/files/lua-${LUA_VERSION}.tar.bz2
         tar -xvf lua-${LUA_VERSION}.tar.bz2
+        rm -rf lua-${LUA_VERSION}.tar.bz2
         cd lua-${LUA_VERSION}
         ./configure --prefix=${PWD}/install
         make
@@ -45,6 +46,8 @@ jobs:
         export LUA_ROOT=${PWD}/install
         cd ..
         wget -c https://sourceforge.net/projects/lmod/files/Lmod-${LMOD_VERSION}.tar.bz2
+        tar -xvf Lmod-${LMOD_VERSION}.tar.bz2
+        rm -rf Lmod-${LMOD_VERSION}.tar.bz2
         cd Lmod-${LMOD_VERSION}
         ./configure --prefix=${PWD}/install --with-lua=${LUA_ROOT}/bin/lua \
             --with-luac=${LUA_ROOT}/bin/luac --with-lua_include=${LUA_ROOT}/include
