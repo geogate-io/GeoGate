@@ -1,7 +1,22 @@
 #!/bin/bash
 
+# Command line arguments
+while getopts i: flag
+do
+  case "${flag}" in
+    i) install_dir=${OPTARG};;
+  esac
+done
+
+if [[ -z "$install_dir" || ! -z `echo $install_dir | grep '^-'` ]]; then
+  install_dir="$HOME/.spack-ci"
+fi
+
+# Print out arguments
+echo "Install Directory: $install_dir";
+
 # Go to installation directory
-cd ${{ env.install_dir }}
+cd $install_dir
 
 # Checkout spack and setup to use it
 echo "::group::Checkout Spack"

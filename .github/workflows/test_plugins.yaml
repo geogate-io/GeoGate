@@ -63,7 +63,8 @@ jobs:
 
     - name: Create Spack Environment and Install Dependencies
       run: |
-        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh 
+        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+          -i ${{ env.install_dir }}
       shell: bash
 
     - name: Restore Dependencies
