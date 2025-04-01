@@ -4,6 +4,7 @@ env:
   spack_version: v1.0.0-alpha.2
   esmf_version: develop
   compiler_version: latest
+  install_dir: ${{ github.workspace }}/app
 
 on:
   #push:
@@ -27,9 +28,9 @@ jobs:
     - name: Checkout Component Repository
       uses: actions/checkout@v3
       with:
-        path: ${{ github.workspace }}/app/geogate
+        path: ${{ install_dir }}/geogate
         
     - name: Create Spack Environment and Install Dependencies
       run: |
-        $GITHUB_ACTION_PATH/scripts/install_deps.sh 
+        ${{ install_dir }}/geogate/.github/workflows/scripts/install_deps.sh 
       shell: bash
