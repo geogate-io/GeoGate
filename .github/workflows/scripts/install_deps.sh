@@ -30,8 +30,9 @@ spack env create test
 spack env activate test
 spack add esmf@8.8.0%gcc@12.3.0+external-parallelio
 #spack add paraview@5.13.1%gcc@12.3.0+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] egl ^libcatalyst@2.0.0%oneapi@2024.2.1+fortran~ipo+python
-spack concretize --force --deprecated --reuse
+spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
 spack find -c
-spack install
-spack stack setup-meta-modules
+spack --color always install 2>&1 | tee log.install
+spack gc -y  2>&1 | tee log.clean
+spack module tcl refresh -y
 echo "::endgroup::"
