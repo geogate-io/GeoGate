@@ -28,9 +28,9 @@ jobs:
     - name: Checkout Component Repository
       uses: actions/checkout@v3
       with:
-        path: ${{ install_dir }}/geogate
+        path: ${{ env.install_dir }}/geogate
         
     - name: Create Spack Environment and Install Dependencies
       run: |
-        ${{ install_dir }}/geogate/.github/workflows/scripts/install_deps.sh 
+        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh 
       shell: bash
