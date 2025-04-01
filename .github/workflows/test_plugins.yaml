@@ -25,6 +25,11 @@ jobs:
         sudo apt-get -qq install build-essential binutils-dev gfortran
       shell: bash
 
+    - name: Checkout Component Repository
+      uses: actions/checkout@v4
+      with:
+        path: ${{ env.install_dir }}/geogate
+
     - name: Install Lua and Lmod
       run: |
         LUA_VERSION=5.1.4.9
@@ -51,11 +56,6 @@ jobs:
         ln -sf ${LMOD_ROOT}/init/profile /etc/profile.d/lmod.sh
         module
 
-    - name: Checkout Component Repository
-      uses: actions/checkout@v4
-      with:
-        path: ${{ env.install_dir }}/geogate
-        
     - name: Create Spack Environment and Install Dependencies
       run: |
         ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh 
