@@ -21,13 +21,35 @@ jobs:
     - name: Install Core Development Tools
       run: |
         sudo apt-get -qq update
-        sudo apt-get -qq install tar unzip file gringo
+        sudo apt-get -qq install wget tar unzip file gringo
         sudo apt-get -qq install build-essential binutils-dev gfortran
-        cat /etc/apt/sources.list.d/ubuntu.sources
-        sudo apt-get -qq build-dep lmod
-        lua_ver=$(which lua | xargs realpath -e | xargs basename)
-        sudo apt-get -qq install lib${lua_ver}-dev tcl-dev
       shell: bash
+
+    - name: Install Lua and Lmod
+      run: |
+        LUA_VERSION=5.1.4.9
+        LMOD_VERSION=8.7
+        mkdir ${{ env.install_dir }}/progs
+        cd ${{ env.install_dir }}/progs
+        wget -c https://sourceforge.net/projects/lmod/files/lua-${LUA_VERSION}.tar.bz2
+        tar -xvf lua-${LUA_VERSION}.tar.bz2
+        cd lua-${LUA_VERSION}
+        ./configure --prefix=${PWD}/install
+        make
+        make install
+        export LUA_ROOT=${PWD}/install
+        cd ..
+        wget -c https://sourceforge.net/projects/lmod/files/Lmod-${LMOD_VERSION}.tar.bz2
+        cd Lmod-${LMOD_VERSION}
+        ./configure --prefix=${PWD}/install --with-lua=${LUA_ROOT}/bin/lua \
+            --with-luac=${LUA_ROOT}/bin/luac --with-lua_include=${LUA_ROOT}/include
+        make
+        make install
+        export LMOD_ROOT=${PWD}/install
+        cd ..
+        source ${LMOD_ROOT}/init/profile
+        ln -sf ${LMOD_ROOT}/init/profile /etc/profile.d/lmod.sh
+        module
 
     - name: Checkout Component Repository
       uses: actions/checkout@v4
