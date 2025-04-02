@@ -90,8 +90,8 @@ jobs:
         source ${{ env.LMOD_ROOT }}/lmod/${{ env.LMOD_VERSION }}/init/profile
         module avail
         ls -al ${{ env.install_dir }}/spack
-        ls -al ${{ env.install_dir }}/spack/var/spack/environments
-        ls -al ${{ env.install_dir }}/spack/var/spack/environments/test
+        ls -al ${{ env.install_dir }}/spack/var
+        ls -al ${{ env.install_dir }}/spack/var/spack
         #export PATH=${{ inputs.dependencies_install_dir }}/view/bin:$PATH
         #export ESMFMKFILE=${{ inputs.dependencies_install_dir }}/view/lib/esmf.mk
         #export FC=gfortran
