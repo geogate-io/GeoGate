@@ -27,7 +27,8 @@ echo "::endgroup::"
 # Find compilers and external packages
 echo "::group::Find Compilers and Externals"
 spack compiler find
-spack external find
+spack external find -h
+exit
 cat /home/runner/.spack/packages.yaml
 echo "::endgroup::"
 
@@ -43,7 +44,6 @@ echo "::endgroup::"
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
-spack uninstall cmake
 spack add esmf@8.8.0%gcc@12.3.0+external-parallelio
 #spack add paraview@5.13.1%gcc@12.3.0+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] egl ^libcatalyst@2.0.0%oneapi@2024.2.1+fortran~ipo+python
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
