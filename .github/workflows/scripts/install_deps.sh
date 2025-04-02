@@ -36,6 +36,7 @@ echo "::group::Create config.yaml"
 echo "config:" > ~/.spack/config.yaml
 echo "  url_fetch_method: curl" >> ~/.spack/config.yaml
 echo "  connect_timeout: 60" >> ~/.spack/config.yaml
+echo "  environments_root: $install_dir/spack-env" >> ~/.spack/config.yaml
 cat ~/.spack/config.yaml
 echo "::endgroup::"
 
