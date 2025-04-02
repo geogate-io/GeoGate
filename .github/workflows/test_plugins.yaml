@@ -8,7 +8,7 @@ env:
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/cicd ]
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
     branches: [ main ]
