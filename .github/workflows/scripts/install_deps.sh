@@ -28,7 +28,6 @@ echo "::endgroup::"
 echo "::group::Find Compilers and Externals"
 spack compiler find
 spack external find --exclude cmake
-exit
 cat /home/runner/.spack/packages.yaml
 echo "::endgroup::"
 
