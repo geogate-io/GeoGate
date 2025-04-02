@@ -36,6 +36,7 @@ jobs:
       run: |
         LUA_VERSION=5.1.4.9
         LMOD_VERSION=8.7
+        echo "LMOD_VERSION=$LMOD_VERSION" >> $GITHUB_ENV
         mkdir ${{ env.install_dir }}/progs
         cd ${{ env.install_dir }}/progs
         wget -c https://sourceforge.net/projects/lmod/files/lua-${LUA_VERSION}.tar.bz2
@@ -56,6 +57,7 @@ jobs:
         make
         make install
         export LMOD_ROOT=${PWD}/install
+        echo "LMOD_ROOT=${PWD}/install" >> $GITHUB_ENV
         cd ..
         source ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile
         sudo ln -sf ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile /etc/profile.d/lmod.sh
@@ -85,7 +87,7 @@ jobs:
 
     - name: Install CDEPS
       run: |
-        source ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile
+        source ${{ env.LMOD_ROOT }}/lmod/${{ env.LMOD_VERSION }}/init/profile
         module avail
         ls -al ${{ env.install_dir }}/envs/test
         #export PATH=${{ inputs.dependencies_install_dir }}/view/bin:$PATH
