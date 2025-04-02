@@ -24,7 +24,7 @@ jobs:
         sudo apt-get -qq install wget tar unzip file gringo
         sudo apt-get -qq install build-essential binutils-dev gfortran
         sudo apt-get -qq install python3-dev python3-pip python3-yaml
-        sudo apt-get -qq install curl tcl tcl-dev
+        sudo apt-get -qq install curl libcurl4-openssl-dev tcl tcl-dev
       shell: bash
 
     - name: Checkout Component Repository
