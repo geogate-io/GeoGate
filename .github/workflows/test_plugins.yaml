@@ -25,7 +25,6 @@ jobs:
         sudo apt-get -qq install build-essential binutils-dev gfortran
         sudo apt-get -qq install python3-dev python3-pip python3-yaml
         sudo apt-get -qq install tcl tcl-dev
-        sudo apt-get -qq remove cmake
       shell: bash
 
     - name: Checkout Component Repository
