@@ -9,9 +9,9 @@ env:
 on:
   push:
     branches: [ main, feature/cicd ]
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
-    branches: [ main ]
+  #pull_request:
+  #  types: [opened, synchronize, reopened, labeled, unlabeled]
+  #  branches: [ main ]
   workflow_dispatch:
 
 jobs:
