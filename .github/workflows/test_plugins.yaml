@@ -22,7 +22,7 @@ jobs:
       run: |
         sudo apt-get -qq update
         sudo apt-get -qq install \
-          wget tar unzip file gringo meson \
+          wget tar unzip file gringo llvm meson \
           build-essential binutils-dev gfortran \
           python3-dev python3-pip python3-yaml \
           curl libcurl4-openssl-dev tcl tcl-dev \
