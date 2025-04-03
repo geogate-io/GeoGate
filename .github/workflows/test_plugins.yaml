@@ -63,15 +63,15 @@ jobs:
     #    sudo ln -sf ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile /etc/profile.d/lmod.sh
     #    module -v
 
-    #- name: Cache Dependencies
-    #  id: cache-dependencies
-    #  uses: actions/cache@v4
-    #  with:
-    #    path: |
-    #      ${{ env.install_dir }}/spack
-    #    key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
-    #    restore-keys: |
-    #      spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
+    - name: Cache Dependencies
+      id: cache-dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ env.install_dir }}/spack
+        key: spack-${{ runner.os }}-${{ hashFiles('var/spack/environments/**/spack.lock') }}
+        restore-keys: |
+          spack-${{ runner.os }}-${{ hashFiles('var/spack/environments/**/spack.lock') }}
 
     - name: Create Spack Environment and Install Dependencies
       if: steps.cache-dependencies.outputs.cache-hit != 'true'
