@@ -21,17 +21,20 @@ jobs:
     - name: Install Core Development Tools
       run: |
         sudo apt-get -qq update
-        sudo apt-get -qq install wget tar unzip file gringo
-        sudo apt-get -qq install build-essential binutils-dev gfortran
-        sudo apt-get -qq install python3-dev python3-pip python3-yaml
-        sudo apt-get -qq install curl libcurl4-openssl-dev tcl tcl-dev
-        sudo apt-get -qq install libosmesa6-dev libegl1-mesa-dev mesa-utils
+        sudo apt-get -qq install \
+          wget tar unzip file gringo meson \
+          build-essential binutils-dev gfortran \
+          python3-dev python3-pip python3-yaml \
+          curl libcurl4-openssl-dev tcl tcl-dev \
+          libosmesa6-dev libegl1-mesa-dev mesa-utils
+        
+        ls /usr/bin/llvm-config
       shell: bash
 
-    - name: Checkout Component Repository
-      uses: actions/checkout@v4
-      with:
-        path: ${{ env.install_dir }}/geogate
+    #- name: Checkout Component Repository
+    #  uses: actions/checkout@v4
+    #  with:
+    #    path: ${{ env.install_dir }}/geogate
 
     #- name: Install Lua and Lmod
     #  run: |
@@ -64,19 +67,19 @@ jobs:
     #    sudo ln -sf ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile /etc/profile.d/lmod.sh
     #    module -v
 
-    - name: Restore Cached Dependencies
-      id: restore-cache-dependencies
-      uses: actions/cache/restore@v4
-      with:
-        path: ${{ env.install_dir }}/spack
-        key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
+    #- name: Restore Cached Dependencies
+    #  id: restore-cache-dependencies
+    #  uses: actions/cache/restore@v4
+    #  with:
+    #    path: ${{ env.install_dir }}/spack
+    #    key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
-    - name: Create Spack Environment and Install Dependencies
-      if: steps.restore-cache-dependencies.outputs.cache-hit != 'true'
-      run: |
-        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
-          -i ${{ env.install_dir }}
-      shell: bash
+    #- name: Create Spack Environment and Install Dependencies
+    #  if: steps.restore-cache-dependencies.outputs.cache-hit != 'true'
+    #  run: |
+    #    ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+    #      -i ${{ env.install_dir }}
+    #  shell: bash
 
     - name: Save Dependencies to Cache
       id: cache-dependencies
