@@ -67,7 +67,9 @@ jobs:
       id: cache-dependencies
       uses: actions/cache@v4
       with:
-        path: ${{ env.install_dir }}/spack
+        path: |
+          ${{ env.install_dir }}/spack
+          ${{ env.install_dir }}/spack-env
         key: spack-${{ runner.os }}-${{ inputs.architecture }}-${{ hashFiles('**/spack.lock') }}
         restore-keys: |
           spack-${{ runner.os }}-${{ inputs.architecture }}-${{ hashFiles('**/spack.lock') }}
