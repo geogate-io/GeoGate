@@ -68,7 +68,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.install_dir }}/spack
-        key: spack-${{ runner.os }}-${{ hashFiles('var/spack/environments/**/spack.lock') }}
+        key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
     - name: Create Spack Environment and Install Dependencies
       if: steps.restore-cache-dependencies.outputs.cache-hit != 'true'
@@ -82,7 +82,7 @@ jobs:
       uses: actions/cache/save@v4
       with:
         path: ${{ env.install_dir }}/spack
-        key: spack-${{ runner.os }}-${{ hashFiles('var/spack/environments/**/spack.lock') }}
+        key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
 
     #- name: Checkout CDEPS Data Components
