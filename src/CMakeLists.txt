@@ -65,10 +65,7 @@ endif()
 ### File lists and macros
 ###############################################################################
 
-list(APPEND geogate_src_files
-  geogate_internalstate.F90
-  geogate_nuopc.F90
-  geogate_share.F90)
+list(APPEND geogate_src_files geogate_nuopc.F90)
 
 ###############################################################################
 ### Set variables
@@ -107,6 +104,11 @@ if(GEOGATE_USE_PYTHON)
   target_link_libraries(geogate PRIVATE conduit::conduit conduit::conduit_python conduit::conduit_mpi)
   target_link_libraries(geogate PRIVATE ${PYTHON_LIBRARY})
 endif()
+
+# Add shared code
+add_subdirectory(shared)
+add_dependencies(geogate geogate_shared)
+target_link_libraries(geogate PRIVATE geogate_shared)
 
 # List all variables (for debugging)
 #get_cmake_property(_variableNames VARIABLES)

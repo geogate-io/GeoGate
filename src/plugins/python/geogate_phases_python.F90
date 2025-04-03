@@ -4,23 +4,16 @@ module geogate_phases_python
   ! Phase for Python interaction 
   !-----------------------------------------------------------------------------
 
-  use ESMF , only: operator(==), operator(/=)
+  use ESMF, only: operator(==)
   use ESMF, only: ESMF_GridComp, ESMF_GridCompGet, ESMF_GridCompGetInternalState
-  use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMBarrier
-  use ESMF, only: ESMF_VMAllGatherV, ESMF_VMGatherV, ESMF_VMAllReduce
   use ESMF, only: ESMF_Time, ESMF_TimeGet
-  use ESMF, only: ESMF_Clock, ESMF_ClockGet
+  use ESMF, only: ESMF_Clock, ESMF_ClockGet, ESMF_KIND_R8
   use ESMF, only: ESMF_LogFoundError, ESMF_FAILURE, ESMF_LogWrite
-  use ESMF, only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_ERROR, ESMF_LOGMSG_INFO, ESMF_SUCCESS
-  use ESMF, only: ESMF_GeomType_Flag, ESMF_State, ESMF_StateGet
-  use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldGather
-  use ESMF, only: ESMF_FieldWrite, ESMF_FieldWriteVTK
-  use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleCreate
+  use ESMF, only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_INFO, ESMF_SUCCESS
+  use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldWrite, ESMF_FieldWriteVTK
+  use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleGet
+  use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMBarrier, ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_MAXSTR, ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
-  use ESMF, only: ESMF_StateGet, ESMF_StateItem_Flag, ESMF_STATEITEM_STATE
-  use ESMF, only: ESMF_Mesh, ESMF_MeshGet, ESMF_MeshWrite, ESMF_STATEITEM_FIELD
-  use ESMF, only: ESMF_KIND_R8, ESMF_REDUCE_SUM
-  use ESMF, only: ESMF_CoordSys_Flag, ESMF_COORDSYS_SPH_DEG
 
   use NUOPC, only: NUOPC_CompAttributeGet
   use NUOPC_Model, only: NUOPC_ModelGet
@@ -28,8 +21,8 @@ module geogate_phases_python
   use, intrinsic :: iso_c_binding, only : C_PTR
   use conduit
 
-  use geogate_share, only: ChkErr
-  use geogate_share, only: CONST_RAD2DEG
+  use geogate_share, only: ChkErr, StringSplit
+  use geogate_types, only: IngestMeshData, meshType
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
 
@@ -50,11 +43,8 @@ module geogate_phases_python
   ! Private module data
   !-----------------------------------------------------------------------------
 
-  type(C_PTR) :: cnode
-  logical :: allGatherToRoot = .false.
-  character(ESMF_MAXSTR) :: scriptName
-
-
+  type(meshType), allocatable :: myMesh(:)
+  character(ESMF_MAXSTR), allocatable :: scriptNames(:)
   character(len=*), parameter :: modName = "(geogate_phases_python)"
   character(len=*), parameter :: u_FILE_u = __FILE__
 
@@ -69,18 +59,16 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
-    integer, save :: timeStep = 0
+    type(C_PTR) :: node
     integer :: n, mpiComm, localPet, petCount
-    type(InternalState) :: is_local
-    type(ESMF_VM) :: vm
-    type(ESMF_Time) :: currTime
-    type(ESMF_Clock) :: clock
-    type(ESMF_State) :: importState
     logical :: isPresent, isSet
     logical, save :: first_time = .true.
-    character(len=ESMF_MAXSTR) :: timeStr
-    character(ESMF_MAXSTR) :: cvalue
-    character(ESMF_MAXSTR) :: message
+    type(InternalState) :: is_local
+    type(ESMF_Time) :: currTime
+    type(ESMF_Clock) :: clock
+    type(ESMF_VM) :: vm
+    integer, save :: timeStep = 0
+    character(ESMF_MAXSTR) :: cvalue, message, timeStr
     character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_run) '
     !---------------------------------------------------------------------------
 
@@ -112,65 +100,51 @@ contains
 
     ! Initialize
     if (first_time) then
-       ! Query plugin specific attributes
        ! Python script/s
-       call NUOPC_CompAttributeGet(gcomp, name="PythonScript", value=cvalue, &
+       call NUOPC_CompAttributeGet(gcomp, name="PythonScripts", value=cvalue, &
          isPresent=isPresent, isSet=isSet, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
        if (isPresent .and. isSet) then
-          scriptName = trim(cvalue)
-          call ESMF_LogWrite(trim(subname)//": PythonScript = "//trim(scriptName), ESMF_LOGMSG_INFO)
+          scriptNames = StringSplit(trim(cvalue), ":")
+          do n = 1, size(scriptNames, dim=1)
+             write(message, fmt='(A,I1,A)') trim(subname)//": PythonScript (", n, ") = "//trim(scriptNames(n))
+             call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+          end do
        endif
-
-       ! Gather
-       call NUOPC_CompAttributeGet(gcomp, name="AllGatherToRoot", value=cvalue, &
-         isPresent=isPresent, isSet=isSet, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       if (isPresent .and. isSet) then
-          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true') allGatherToRoot = .true.
-       end if
-       write(message, fmt='(A,L)') trim(subname)//': AllGatherToRoot = ', allGatherToRoot
-       call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-
-       ! Create Conduit node
-       cnode = conduit_node_create()
 
        ! Set flag
        first_time = .false.
     end if
 
+    ! Create Conduit node
+    node = conduit_node_create()
+
     ! Add time information
-    call conduit_node_set_path_int32(cnode, 'core/time_step', timeStep)
-    call conduit_node_set_path_char8_str(cnode, 'core/time_str', trim(timeStr)//char(0))
+    call conduit_node_set_path_int32(node, 'state/time_step', timeStep)
+    call conduit_node_set_path_char8_str(node, 'state/time_str', trim(timeStr)//char(0))
 
     ! Add MPI related information
-    if (.not. allGatherToRoot) then
-       call conduit_node_set_path_int32(cnode, "mpi/comm", mpiComm)
-       call conduit_node_set_path_int32(cnode, "mpi/localPet", localPet)
-       call conduit_node_set_path_int32(cnode, "mpi/petCount", petCount)
-    end if
+    call conduit_node_set_path_int32(node, "mpi/comm", mpiComm)
+    call conduit_node_set_path_int32(node, "mpi/localpet", localPet)
+    call conduit_node_set_path_int32(node, "mpi/petcount", petCount)
 
-    ! Loop over states
+    ! Allocate myMesh
+    if (.not. allocated(myMesh)) allocate(myMesh(is_local%wrap%numComp))
+
+    ! Loop over FBs
     do n = 1, is_local%wrap%numComp
-       ! Add content of state to Conduit node
-       call StateToNode(is_local%wrap%NStateImp(n), vm, localPet, petCount, trim(is_local%wrap%compName(n)), rc=rc)
+       ! Load content of FB to Conduit node
+       call FB2Node(is_local%wrap%FBImp(n), trim(is_local%wrap%compName(n)), myMesh(n), node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end do
 
-    ! Pass node to Python
-    if (allGatherToRoot) then
-       if (localPet == 0) then
-          call conduit_fort_to_py(cnode, trim(scriptName)//char(0))
-       end if
-       ! PETs wait for root
-       call ESMF_VMBarrier(vm, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    else
-       call conduit_fort_to_py(cnode, trim(scriptName)//char(0))
-    end if
+    ! Pass node to Python scripts
+    do n = 1, size(scriptNames, dim=1)
+       call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
+    end do
 
-    ! Reset node
-    call conduit_node_reset(cnode)
+    ! Clean memory
+    call conduit_node_destroy(node)
 
     ! Increase time step
     timeStep = timeStep+1
@@ -181,198 +155,132 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine StateToNode(state, vm, localPet, petCount, compName, rc)
-    use iso_c_binding
-    implicit none
+  subroutine FB2Node(FBin, compName, myMesh, node, rc)
 
     ! input/output variables
-    type(ESMF_State), intent(in) :: state
-    type(ESMF_VM), intent(in) :: vm
-    integer, intent(in) :: localPet
-    integer, intent(in) :: petCount
+    type(ESMF_FieldBundle) :: FBin
     character(len=*), intent(in) :: compName
+    type(meshType), intent(inout) :: myMesh
+    type(C_PTR), intent(inout) :: node
     integer, intent(out), optional :: rc
 
     ! local variables
-    type(ESMF_Mesh) :: mesh
-    type(ESMF_Field) :: field
-    type(ESMF_CoordSys_Flag) :: coordSys
-    integer :: i, n, m, rank, itemCount
-    integer :: spatialDim, numOwnedElements
-    integer :: numElements(1)
-    integer, allocatable :: numOwnedElementsArr(:)
-    integer, allocatable :: recvOffsets(:), recvCounts(:)
-    real(ESMF_KIND_R8), allocatable   :: ownedElemCoords(:)
-    real(ESMF_KIND_R8), allocatable :: ownedElemLats(:)
-    real(ESMF_KIND_R8), allocatable :: ownedElemLons(:)
-    real(ESMF_KIND_R8), allocatable :: elemLats(:)
-    real(ESMF_KIND_R8), allocatable :: elemLons(:)
-    real(ESMF_KIND_R8), allocatable :: farrayDst(:)
+    integer :: n, m
+    integer :: fieldCount, dataSize
+    type(C_PTR) :: channel, mesh, fields
     real(ESMF_KIND_R8), pointer :: farrayPtr(:)
-    character(ESMF_MAXSTR) :: message
-    character(ESMF_MAXSTR), allocatable     :: itemNameList(:)
-    type(ESMF_StateItem_Flag), allocatable  :: itemTypeList(:)
-    character(len=*), parameter :: subname = trim(modName)//':(StateToNode) '
+    type(ESMF_Mesh) :: fmesh
+    type(ESMF_Field) :: field
+    character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
+    character(len=*), parameter :: subname = trim(modName)//':(FB2Node) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
 
-    ! Query state
-    call ESMF_StateGet(state, itemCount=itemCount, rc=rc)
+    ! Add channel
+    channel = conduit_node_fetch(node, "channels/"//trim(compName))
+
+    ! Query number of item in the FB
+    call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    if (itemCount > 0) then
-       ! Allocate temporary arrays
-       allocate(itemNameList(itemCount))
-       allocate(itemTypeList(itemCount))
+    allocate(fieldNameList(fieldCount))
 
-       ! Query item names and types
-       call ESMF_StateGet(state, itemNameList=itemNameList, itemTypeList=itemTypeList, rc=rc)
+    call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Loop over fields
+    do n = 1, fieldCount
+       ! Query field
+       call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       ! Query coordinate information from first field
+       if (n == 1) then
+          ! Create mesh node
+          mesh = conduit_node_fetch(channel, "data")
+
+          if (.not. allocated(myMesh%nodeCoordsX)) then
+             ! Query mesh
+             call ESMF_FieldGet(field, mesh=fmesh, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             ! Ingest ESMF mesh
+             call IngestMeshData(fmesh, myMesh, trim(compName), rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+          end if
+
+          ! Set type of mesh, construct as an unstructured mesh
+          call conduit_node_set_path_char8_str(mesh, "coordsets/coords/type", "explicit")
+
+          ! Add coordinates
+          call conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/x", &
+             myMesh%nodeCoordsX, int8(myMesh%nodeCount))
+          call conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/y", &
+             myMesh%nodeCoordsY, int8(myMesh%nodeCount))
+          call conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/z", &
+             myMesh%nodeCoordsZ, int8(myMesh%nodeCount))
+
+          ! Add topology
+          call conduit_node_set_path_char8_str(mesh, "topologies/mesh/type", "unstructured")
+          call conduit_node_set_path_char8_str(mesh, "topologies/mesh/coordset", "coords")
+          call conduit_node_set_path_char8_str(mesh, "topologies/mesh/elements/shape", trim(myMesh%elementShape))
+          do m = 1, size(myMesh%elementShapeMapName, dim=1)
+             call conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/"// &
+               trim(myMesh%elementShapeMapName(m)), myMesh%elementShapeMapValue(m))
+          end do
+          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/shapes", myMesh%elementTypesShape, int8(myMesh%elementCount))
+          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/sizes", myMesh%elementTypes, int8(myMesh%elementCount))
+          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/offsets", myMesh%elementTypesOffset, int8(myMesh%elementCount))
+          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/connectivity", myMesh%elementConn, int8(myMesh%numElementConn))
+
+          ! Create node for fields
+          fields = conduit_node_fetch(mesh, "fields")
+
+          ! Add mask information
+          if (myMesh%elementMaskIsPresent) then
+             call conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
+             call conduit_node_set_path_char8_str(fields, "element_mask/topology", "mesh")
+             call conduit_node_set_path_char8_str(fields, "element_mask/volume_dependent", "false")
+             call conduit_node_set_path_external_int32_ptr(fields, "element_mask/values", &
+                myMesh%elementMask, int8(myMesh%elementCount))
+          end if
+          if (myMesh%nodeMaskIsPresent) then
+             call conduit_node_set_path_char8_str(fields, "node_mask/association", "vertex")
+             call conduit_node_set_path_char8_str(fields, "node_mask/topology", "mesh")
+             call conduit_node_set_path_char8_str(fields, "node_mask/volume_dependent", "false")
+             call conduit_node_set_path_external_int32_ptr(fields, "node_mask/values", &
+                myMesh%nodeMask, int8(myMesh%nodeCount))
+          end if
+       end if
+
+       ! Query field pointer
+       call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Loop over items
-       do n = 1, itemCount
-          ! Check if item is field
-          if (itemTypeList(n) == ESMF_STATEITEM_FIELD) then
-             ! Query field
-             call ESMF_StateGet(state, itemName=itemNameList(n), field=field, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       ! Add fields to node
+       if (size(farrayPtr, dim=1) == myMesh%elementCount) then
+          dataSize = myMesh%elementCount
+          call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "element")
+       else
+          dataSize = myMesh%nodeCount
+          call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "vertex")
+       end if
+       call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/topology", "mesh")
+       call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/volume_dependent", "false")
+       call conduit_node_set_path_external_float64_ptr(fields, &
+          trim(fieldNameList(n))//"/values", farrayPtr, int8(dataSize))
 
-             if (n == 1) then
-                ! Query field mesh
-                call ESMF_FieldGet(field, mesh=mesh, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       ! Init pointers
+       nullify(farrayPtr)
+    end do
 
-                ! Extract coordinate information
-                call ESMF_MeshGet(mesh, spatialDim=spatialDim, numOwnedElements=numOwnedElements, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                ! Allocate data structures
-                allocate(ownedElemLats(numOwnedElements))
-                allocate(ownedElemLons(numOwnedElements))
-                allocate(ownedElemCoords(spatialDim*numOwnedElements))
-
-                ! Get element coordinates and fill arrays
-                call ESMF_MeshGet(mesh, ownedElemCoords=ownedElemCoords, coordSys=coordSys, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                do m = 1, numOwnedElements
-                   ownedElemLons(m) = ownedElemCoords(2*m-1)
-                   ownedElemLats(m) = ownedElemCoords(2*m)
-                end do
-
-                ! Convert coordinates from radian to degree
-                if (coordSys /= ESMF_COORDSYS_SPH_DEG) then
-                   ownedElemLons = ownedElemLons*CONST_RAD2DEG
-                   ownedElemLats = ownedElemLats*CONST_RAD2DEG
-                end if
-
-                ! Check the flag to gather data on PET 0
-                if (allGatherToRoot) then
-                   ! Find total number of elements
-                   call ESMF_VMAllReduce(vm, (/ numOwnedElements /), numElements, 1, ESMF_REDUCE_SUM, rc=rc)
-                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                   ! Collect numOwnedElements of each PET in a array
-                   allocate(numOwnedElementsArr(petCount))
-                   numOwnedElementsArr = 0
-                   call ESMF_VMAllGatherV(vm, sendData=(/ numOwnedElements /), sendCount=1, &
-                     recvData=numOwnedElementsArr, recvCounts=(/ (1, n = 0, petCount-1) /), &
-                     recvOffsets=(/ (n, n = 0, petCount-1) /), rc=rc)
-                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                   ! Create recvOffsets array
-                   allocate(recvOffsets(petCount))
-                   recvOffsets = 0
-                   recvOffsets = (/ (sum(numOwnedElementsArr(1:n))-numOwnedElementsArr(1), n=1, petCount) /)
-
-                   ! Create recvCounts array
-                   allocate(recvCounts(petCount))
-                   recvCounts = (/ (numOwnedElementsArr(n), n=1, petCount) /)
-
-                   ! Print out numOwnedElements, recvOffsets
-                   !do i = 1, petCount
-                   !   write(message, fmt='(A,3I8)') trim(subname)//': numOwnElem, Offset, Counts = ', &
-                   !     numOwnedElementsArr(i), recvOffsets(i), recvCounts(i)
-                   !   call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-                   !end do
-
-                   ! Allocate arrays that will be used to gather data
-                   if (localPet == 0) then
-                      allocate(farrayDst(numElements(1)))
-                      allocate(elemLons(numElements(1)))
-                      allocate(elemLats(numElements(1)))
-                   else
-                      allocate(farrayDst(0))
-                      allocate(elemLons(0))
-                      allocate(elemLats(0))
-                   end if
-
-                   ! Gather coordinate data
-                   call ESMF_VMGatherV(vm, ownedElemLons, numOwnedElements, elemLons, recvCounts, recvOffsets, 0, rc=rc)
-                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-                   call ESMF_VMGatherV(vm, ownedElemLats, numOwnedElements, elemLats, recvCounts, recvOffsets, 0, rc=rc)
-                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                   ! Add coordinate information to node
-                   call conduit_node_set_path_float64_ptr(cnode, trim(compName)//'/lon', elemLons, int8(numElements(1)))
-                   call conduit_node_set_path_float64_ptr(cnode, trim(compName)//'/lat', elemLats, int8(numElements(1)))
-
-                   ! Clean memory
-                   deallocate(numOwnedElementsArr)
-                   deallocate(recvCounts)
-                   deallocate(recvOffsets)
-                   deallocate(elemLons)
-                   deallocate(elemLats)
-
-                ! There is no need to gather data
-                else
-                   ! Add coordinate information to node
-                   call conduit_node_set_path_float64_ptr(cnode, trim(compName)//'/lon', ownedElemLons, int8(numOwnedElements))
-                   call conduit_node_set_path_float64_ptr(cnode, trim(compName)//'/lat', ownedElemLats, int8(numOwnedElements))
-                end if
-
-                ! Clean memory
-                deallocate(ownedElemCoords)
-                deallocate(ownedElemLons)
-                deallocate(ownedElemLats)
-             end if
-
-             ! Query field pointer
-             call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             ! Add field data to node
-             if (allGatherToRoot) then
-                ! Gather field data
-                call ESMF_FieldGather(field, farrayDst, rootPet=0, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                ! Add to node
-                call conduit_node_set_path_float64_ptr(cnode, &
-                  trim(compName)//'/'//trim(itemNameList(n)), farrayDst, int8(numElements(1)))
-             else
-                ! Add to node
-                call conduit_node_set_path_float64_ptr(cnode, &
-                   trim(compName)//'/'//trim(itemNameList(n)), farrayPtr, int8(numOwnedElements))
-             end if
-
-             ! Disassociate pointer
-             nullify(farrayPtr)
-
-          end if ! itemTypeList
-       end do
-
-       ! Clean memory
-       if (allGatherToRoot) deallocate(farrayDst)
-       deallocate(itemNameList)
-       deallocate(itemTypeList)
-
-    end if ! itemCount
+    ! Clean memeory
+    deallocate(fieldNameList)
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
-  end subroutine StateToNode
+  end subroutine FB2Node
 
 end module geogate_phases_python

@@ -38,7 +38,7 @@ module geogate_nuopc
   use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_CompAttributeSet
   use NUOPC, only: NUOPC_CompCheckSetClock
   use NUOPC, only: NUOPC_Realize
-  use NUOPC, only: NUOPC_AddNamespace
+  use NUOPC, only: NUOPC_FieldDictionarySetAutoAdd, NUOPC_AddNamespace
   use NUOPC, only: NUOPC_NoOP
  
   use NUOPC_Model, only: SetVM
@@ -229,6 +229,14 @@ contains
     !------------------
 
     call NUOPC_SetAttribute(importState, "FieldTransferPolicy", "transferAllWithNamespace", rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !------------------
+    ! Enable adding fields to field dictionary automatically
+    ! Note that NUOPC_FieldDictionarySetAutoAdd() is not part of the public API and not documented
+    !------------------
+
+    call NUOPC_FieldDictionarySetAutoAdd(.true., rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
