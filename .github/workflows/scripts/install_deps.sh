@@ -34,9 +34,9 @@ echo "::endgroup::"
 # Create config file (to fix FetchError issue)
 echo "::group::Create config.yaml"
 spack config add "modules:default:enable:[tcl]"
-spack config add "url_fetch_method:curl"
-spack config add "connect_timeout:60"
-spack config add "environments_root:$install_dir/spack-env"
+spack config add "config:url_fetch_method:curl"
+spack config add "config:connect_timeout:60"
+#spack config add "config:environments_root:$install_dir/spack-env"
 #echo "config:" > ~/.spack/config.yaml
 #echo "  url_fetch_method: curl" >> ~/.spack/config.yaml
 #echo "  connect_timeout: 60" >> ~/.spack/config.yaml
@@ -44,12 +44,14 @@ spack config add "environments_root:$install_dir/spack-env"
 cat ~/.spack/config.yaml
 echo "::endgroup::"
 
+  ==> Error: Invalid config section: 'url_fetch_method'. Options are: compilers concretizer definitions env_vars view develop mirrors repos packages modules config upstreams bootstrap ci cdash
+
 # Create new spack environment
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
 spack add lmod
-spack add libcatalyst@2.0.0%gcc@12.3.0+fortran~ipo+python
+#spack add libcatalyst@2.0.0%gcc@12.3.0+fortran~ipo+python
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
 spack --color always install 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
