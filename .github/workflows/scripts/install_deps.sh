@@ -44,8 +44,6 @@ spack config add "config:connect_timeout:60"
 cat ~/.spack/config.yaml
 echo "::endgroup::"
 
-  ==> Error: Invalid config section: 'url_fetch_method'. Options are: compilers concretizer definitions env_vars view develop mirrors repos packages modules config upstreams bootstrap ci cdash
-
 # Create new spack environment
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
