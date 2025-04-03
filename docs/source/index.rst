@@ -10,7 +10,7 @@ Welcome to GeoGate's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-
+PluginCatalyst.rst
 
 Indices and tables
 ==================
