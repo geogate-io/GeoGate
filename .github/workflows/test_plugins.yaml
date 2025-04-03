@@ -31,55 +31,24 @@ jobs:
         ls /usr/bin/llvm-config
       shell: bash
 
-    #- name: Checkout Component Repository
-    #  uses: actions/checkout@v4
-    #  with:
-    #    path: ${{ env.install_dir }}/geogate
+    - name: Checkout Component Repository
+      uses: actions/checkout@v4
+      with:
+        path: ${{ env.install_dir }}/geogate
 
-    #- name: Install Lua and Lmod
-    #  run: |
-    #    LUA_VERSION=5.1.4.9
-    #    LMOD_VERSION=8.7
-    #    echo "LMOD_VERSION=$LMOD_VERSION" >> $GITHUB_ENV
-    #    mkdir ${{ env.install_dir }}/progs
-    #    cd ${{ env.install_dir }}/progs
-    #    wget -c https://sourceforge.net/projects/lmod/files/lua-${LUA_VERSION}.tar.bz2
-    #    tar -xvf lua-${LUA_VERSION}.tar.bz2
-    #    rm -rf lua-${LUA_VERSION}.tar.bz2
-    #    cd lua-${LUA_VERSION}
-    #    ./configure --prefix=${PWD}/install
-    #    make
-    #    make install
-    #    export LUA_ROOT=${PWD}/install
-    #    cd ..
-    #    wget -c https://sourceforge.net/projects/lmod/files/Lmod-${LMOD_VERSION}.tar.bz2
-    #    tar -xvf Lmod-${LMOD_VERSION}.tar.bz2
-    #    rm -rf Lmod-${LMOD_VERSION}.tar.bz2
-    #    cd Lmod-${LMOD_VERSION}
-    #    ./configure --prefix=${PWD}/install --with-lua=${LUA_ROOT}/bin/lua \
-    #        --with-luac=${LUA_ROOT}/bin/luac --with-lua_include=${LUA_ROOT}/include
-    #    make
-    #    make install
-    #    export LMOD_ROOT=${PWD}/install
-    #    echo "LMOD_ROOT=${PWD}/install" >> $GITHUB_ENV
-    #    cd ..
-    #    source ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile
-    #    sudo ln -sf ${LMOD_ROOT}/lmod/${LMOD_VERSION}/init/profile /etc/profile.d/lmod.sh
-    #    module -v
+    - name: Restore Cached Dependencies
+      id: restore-cache-dependencies
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ env.install_dir }}/spack
+        key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
-    #- name: Restore Cached Dependencies
-    #  id: restore-cache-dependencies
-    #  uses: actions/cache/restore@v4
-    #  with:
-    #    path: ${{ env.install_dir }}/spack
-    #    key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
-
-    #- name: Create Spack Environment and Install Dependencies
-    #  if: steps.restore-cache-dependencies.outputs.cache-hit != 'true'
-    #  run: |
-    #    ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
-    #      -i ${{ env.install_dir }}
-    #  shell: bash
+    - name: Create Spack Environment and Install Dependencies
+      if: steps.restore-cache-dependencies.outputs.cache-hit != 'true'
+      run: |
+        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+          -i ${{ env.install_dir }}
+      shell: bash
 
     - name: Save Dependencies to Cache
       id: cache-dependencies

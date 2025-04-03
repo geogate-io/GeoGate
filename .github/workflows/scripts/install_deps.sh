@@ -56,3 +56,10 @@ spack --color always install 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
 spack find -c
 echo "::endgroup::"
+
+# List available modules
+echo "::group::List Modules
+. $(spack location -i lmod)/lmod/lmod/init/bash
+. spack/share/spack/setup-env.sh
+module avail
+echo "::endgroup::"
