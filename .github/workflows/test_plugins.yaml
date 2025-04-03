@@ -84,6 +84,7 @@ jobs:
         path: ${{ env.install_dir }}/spack
         key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
+#  ./spack/var/spack/environments/test/spack.lock
 
     #- name: Checkout CDEPS Data Components
     #  uses: actions/checkout@v4
