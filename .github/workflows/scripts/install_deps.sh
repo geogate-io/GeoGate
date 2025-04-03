@@ -53,8 +53,8 @@ spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.conc
 spack --color always install 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
 spack find -c
-. $(spack location -i lmod)/lmod/lmod/init/bash
-. spack/share/spack/setup-env.sh
+#. $(spack location -i lmod)/lmod/lmod/init/bash
+#. spack/share/spack/setup-env.sh
 find . -name "spack.lock"
-module avail
+#module avail
 echo "::endgroup::"

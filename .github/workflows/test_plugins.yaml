@@ -86,26 +86,26 @@ jobs:
     #    repository: ESCOMP/CDEPS
     #    path: ${{ env.install_dir }}/cdeps
 
-    - name: Install CDEPS
-      run: |
-        source ${{ env.LMOD_ROOT }}/lmod/${{ env.LMOD_VERSION }}/init/profile
-        ls -al ${{ env.install_dir }}/spack-env/test
-        ls -al ${{ env.install_dir }}/spack-env/test/.spack-env
+    #- name: Install CDEPS
+    #  run: |
+    #    source ${{ env.LMOD_ROOT }}/lmod/${{ env.LMOD_VERSION }}/init/profile
+    #    ls -al ${{ env.install_dir }}/spack-env/test
+    #    ls -al ${{ env.install_dir }}/spack-env/test/.spack-env
 
-        #export PATH=${{ inputs.dependencies_install_dir }}/view/bin:$PATH
-        #export ESMFMKFILE=${{ inputs.dependencies_install_dir }}/view/lib/esmf.mk
-        #export FC=gfortran
-        #cd ${{ inputs.app_install_dir }}/cdeps
-        cd ${{ env.install_dir }}/cdeps
-        #mkdir build
-        #cd build
-        #cmake -DCMAKE_INSTALL_PREFIX=${{ inputs.app_install_dir }} \
-        #  -DPIO_C_LIBRARY=${{ inputs.dependencies_install_dir }}/view/lib \
-        #  -DPIO_C_INCLUDE_DIR=${{ inputs.dependencies_install_dir }}/view/include \
-        #  -DPIO_Fortran_LIBRARY=${{ inputs.dependencies_install_dir }}/view/lib \
-        #  -DPIO_Fortran_INCLUDE_DIR=${{ inputs.dependencies_install_dir }}/view/include \
-        #  -DCMAKE_Fortran_FLAGS="-ffree-line-length-none -fallow-argument-mismatch -fallow-invalid-boz" \
-        #  -DDISABLE_FoX=ON ../
-        #make
-        #make install
-      shell: bash
+    #    #export PATH=${{ inputs.dependencies_install_dir }}/view/bin:$PATH
+    #    #export ESMFMKFILE=${{ inputs.dependencies_install_dir }}/view/lib/esmf.mk
+    #    #export FC=gfortran
+    #    #cd ${{ inputs.app_install_dir }}/cdeps
+    #    cd ${{ env.install_dir }}/cdeps
+    #    #mkdir build
+    #    #cd build
+    #    #cmake -DCMAKE_INSTALL_PREFIX=${{ inputs.app_install_dir }} \
+    #    #  -DPIO_C_LIBRARY=${{ inputs.dependencies_install_dir }}/view/lib \
+    #    #  -DPIO_C_INCLUDE_DIR=${{ inputs.dependencies_install_dir }}/view/include \
+    #    #  -DPIO_Fortran_LIBRARY=${{ inputs.dependencies_install_dir }}/view/lib \
+    #    #  -DPIO_Fortran_INCLUDE_DIR=${{ inputs.dependencies_install_dir }}/view/include \
+    #    #  -DCMAKE_Fortran_FLAGS="-ffree-line-length-none -fallow-argument-mismatch -fallow-invalid-boz" \
+    #    #  -DDISABLE_FoX=ON ../
+    #    #make
+    #    #make install
+    #  shell: bash
