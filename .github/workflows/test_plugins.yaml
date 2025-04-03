@@ -69,7 +69,6 @@ jobs:
     #  with:
     #    path: |
     #      ${{ env.install_dir }}/spack
-    #      ${{ env.install_dir }}/spack-env
     #    key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
     #    restore-keys: |
     #      spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
