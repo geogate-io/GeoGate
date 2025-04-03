@@ -39,7 +39,6 @@ echo "::group::Create config.yaml"
 spack config add "modules:default:enable:[tcl]"
 spack config add "config:url_fetch_method:curl"
 spack config add "config:connect_timeout:60"
-spack config add "packages:all:compiler:[$comp]"
 #spack config add "config:environments_root:$install_dir/spack-env"
 cat ~/.spack/config.yaml
 echo "::endgroup::"
@@ -49,9 +48,9 @@ echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
 spack add lmod
-spack add esmf@8.8.0+external-parallelio
-spack add libcatalyst@2.0.0+fortran~ipo+python
-spack add paraview@5.13.1+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] osmesa ^libcatalyst@2.0.0+fortran~ipo+python
+spack add esmf@8.8.0%${comp}+external-parallelio
+spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python
+spack add paraview@5.13.1%${comp}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] osmesa ^libcatalyst@2.0.0%${comp}+fortran~ipo+python
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
 spack --color always install 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
