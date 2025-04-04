@@ -58,7 +58,7 @@ spack find -c
 echo "::endgroup::"
 
 # List available modules
-echo "::group::List Modules
+echo "::group::List Modules"
 . $(spack location -i lmod)/lmod/lmod/init/bash
 . spack/share/spack/setup-env.sh
 module avail
