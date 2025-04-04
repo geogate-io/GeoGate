@@ -57,19 +57,20 @@ jobs:
         path: ${{ env.install_dir }}/spack
         key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
-#  ./spack/var/spack/environments/test/spack.lock
+    - name: Checkout CDEPS Data Components
+      uses: actions/checkout@v4
+      with:
+        repository: ESCOMP/CDEPS
+        path: ${{ env.install_dir }}/cdeps
 
-    #- name: Checkout CDEPS Data Components
-    #  uses: actions/checkout@v4
-    #  with:
-    #    repository: ESCOMP/CDEPS
-    #    path: ${{ env.install_dir }}/cdeps
-
-    #- name: Install CDEPS
-    #  run: |
-    #    source ${{ env.LMOD_ROOT }}/lmod/${{ env.LMOD_VERSION }}/init/profile
-    #    ls -al ${{ env.install_dir }}/spack-env/test
-    #    ls -al ${{ env.install_dir }}/spack-env/test/.spack-env
+    - name: Install CDEPS
+      run: |
+        cd ${{ env.install_dir }}
+        . spack/share/spack/setup-env.sh
+        . $(spack location -i lmod)/lmod/lmod/init/bash
+        module load esmf
+        env | grep PIO
+        env | grep pio
 
     #    #export PATH=${{ inputs.dependencies_install_dir }}/view/bin:$PATH
     #    #export ESMFMKFILE=${{ inputs.dependencies_install_dir }}/view/lib/esmf.mk
