@@ -49,7 +49,7 @@ spack env create test
 spack env activate test
 spack add lmod
 spack add esmf@8.8.0%${comp}+external-parallelio
-spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python
+spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python ^conduit@0.9.3%${comp}+python
 spack add paraview@5.13.1%${comp}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] osmesa ^libcatalyst@2.0.0%${comp}+fortran~ipo+python
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
 spack --color always install 2>&1 | tee log.install
