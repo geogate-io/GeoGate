@@ -63,6 +63,7 @@ jobs:
       with:
         repository: ESCOMP/CDEPS
         path: ${{ env.install_dir }}/cdeps
+        submodules: true
 
     - name: Install CDEPS
       run: |
@@ -80,7 +81,7 @@ jobs:
           -DPIO_C_INCLUDE_DIR=$parallelio_ROOT/include \
           -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
           -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
-          -DCMAKE_Fortran_FLAGS="-ffree-line-length-none -fallow-argument-mismatch -fallow-invalid-boz" \
+          -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
           -DDISABLE_FoX=ON ../
         make
         make install
