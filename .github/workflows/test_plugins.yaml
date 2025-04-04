@@ -44,11 +44,8 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.install_dir }}/spack
-        key: spack-${{ runner.os }}-|
-             gcc_${{ env.compiler_version }}-|
-             esmf_${{ env.esmf_version }}-|
-             conduit_${{ env.conduit_version }}-|
-             paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
+        key: |
+          spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
     - name: Create Spack Environment and Install Dependencies
       if: steps.restore-cache.outputs.cache-hit != 'true'
@@ -63,11 +60,8 @@ jobs:
       uses: actions/cache/save@v4
       with:
         path: ${{ env.install_dir }}/spack
-        key: spack-${{ runner.os }}-|
-             gcc_${{ env.compiler_version }}-|
-             esmf_${{ env.esmf_version }}-|
-             conduit_${{ env.conduit_version }}-|
-             paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
+        key: |
+          spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
     - name: Checkout CDEPS Data Components
       uses: actions/checkout@v4
