@@ -46,8 +46,9 @@ jobs:
     - name: Create Spack Environment and Install Dependencies
       if: steps.restore-cache.outputs.cache-hit != 'true'
       run: |
-        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
-          -i ${{ env.install_dir }}
+        echo ${{ steps.restore-cache.outputs.cache-hit }}
+        #${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+        #  -i ${{ env.install_dir }}
       shell: bash
 
     - name: Save Dependencies to Cache
