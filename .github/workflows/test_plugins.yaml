@@ -47,16 +47,16 @@ jobs:
       if: steps.restore-cache.outputs.cache-hit != 'true'
       run: |
         echo ${{ steps.restore-cache.outputs.cache-hit }}
-        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
-          -i ${{ env.install_dir }}
+        #${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+        #  -i ${{ env.install_dir }}
       shell: bash
 
-    - name: Save Dependencies to Cache
-      id: save-cache
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ env.install_dir }}/spack
-        key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
+    #- name: Save Dependencies to Cache
+    #  id: save-cache
+    #  uses: actions/cache/save@v4
+    #  with:
+    #    path: ${{ env.install_dir }}/spack
+    #    key: spack-${{ runner.os }}-${{ hashFiles('**/spack.lock') }}
 
     - name: Checkout CDEPS Data Components
       uses: actions/checkout@v4
