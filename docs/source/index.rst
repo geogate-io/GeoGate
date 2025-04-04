@@ -9,5 +9,13 @@ Welcome to GeoGate's documentation!
 .. toctree::
    :maxdepth: 2
    :numbered:
+   :caption: Contents:
 
-PluginCatalyst.rst
+   PluginCatalyst.rst
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
