@@ -57,6 +57,7 @@ jobs:
 
     - name: Save Dependencies to Cache
       id: save-cache
+      if: steps.restore-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: ${{ env.install_dir }}/spack
