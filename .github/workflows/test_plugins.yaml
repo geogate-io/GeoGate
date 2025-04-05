@@ -77,9 +77,6 @@ jobs:
         . spack/share/spack/setup-env.sh
         spack env activate test
         . $(spack location -i lmod)/lmod/lmod/init/bash
-        #spack compiler find
-        #spack external find --exclude cmake
-        #spack load gcc@${{ env.compiler_version }}
         which gcc
         which gfortran
         module load esmf
