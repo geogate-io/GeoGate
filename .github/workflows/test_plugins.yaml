@@ -43,7 +43,7 @@ jobs:
       id: restore-cache
       uses: actions/cache/restore@v4
       with:
-        path: ${{ env.install_dir }}/spack
+        path: ${{ env.install_dir }}/spack 
         key: |
           spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
@@ -76,8 +76,9 @@ jobs:
         cd ${{ env.install_dir }}
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
-        cat /home/runner/.spack/packages.yaml
-        module avail
+        spack load gcc@${{ env.compiler_version }}
+        which gcc
+        which gfortran
         module load esmf
         export FC=gfortran
         cd ${{ env.install_dir }}/cdeps
@@ -99,6 +100,9 @@ jobs:
         cd ${{ env.install_dir }}
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
+        spack load gcc@${{ env.compiler_version }}
+        which gcc
+        which gfortran
         module load esmf
         module load libcatalyst
         module load conduit
