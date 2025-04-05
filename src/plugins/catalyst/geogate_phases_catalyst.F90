@@ -12,10 +12,9 @@ module geogate_phases_catalyst
   use ESMF, only: ESMF_Clock, ESMF_ClockGet
   use ESMF, only: ESMF_LogFoundError, ESMF_FAILURE, ESMF_LogWrite
   use ESMF, only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_ERROR, ESMF_LOGMSG_INFO, ESMF_SUCCESS
-  use ESMF, only: ESMF_State, ESMF_StateGet, ESMF_StateItem_Flag
   use ESMF, only: ESMF_Field, ESMF_FieldGet
+  use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleGet
   use ESMF, only: ESMF_MAXSTR, ESMF_KIND_R8
-  use ESMF, only: ESMF_STATEITEM_FIELD, ESMF_STATEITEM_STATE
   use ESMF, only: ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_CoordSys_Flag, ESMF_COORDSYS_SPH_DEG, ESMF_COORDSYS_SPH_RAD
 
@@ -26,6 +25,7 @@ module geogate_phases_catalyst
   use catalyst_conduit
 
   use geogate_share, only: ChkErr, StringSplit
+  use geogate_types, only: IngestMeshData, meshType
   use geogate_share, only: rad2Deg, deg2Rad, constHalfPi
   use geogate_share, only: debugMode
   use geogate_internalstate, only: InternalState
@@ -48,24 +48,6 @@ module geogate_phases_catalyst
   !-----------------------------------------------------------------------------
   ! Private module data
   !-----------------------------------------------------------------------------
-
-  type meshType
-    integer :: nodeCount
-    integer :: elementCount
-    integer :: numElementConn
-    character(ESMF_MAXSTR) :: elementShape
-    real(ESMF_KIND_R8), allocatable :: nodeCoordsX(:)
-    real(ESMF_KIND_R8), allocatable :: nodeCoordsY(:)
-    real(ESMF_KIND_R8), allocatable :: nodeCoordsZ(:)
-    integer, allocatable :: elementTypes(:)
-    integer, allocatable :: elementTypesShape(:)
-    integer, allocatable :: elementTypesOffset(:)
-    integer, allocatable :: elementConn(:)
-    logical :: elementMaskIsPresent
-    integer, allocatable :: elementMask(:)
-    logical :: nodeMaskIsPresent
-    integer, allocatable :: nodeMask(:)
-  end type meshType
 
   logical :: convertToCart
   type(meshType), allocatable :: myMesh(:)
@@ -97,7 +79,6 @@ contains
     type(ESMF_TimeInterval) :: timeStep
     type(ESMF_Time) :: startTime, currTime
     type(ESMF_Clock) :: clock
-    type(ESMF_State) :: importState
     character(ESMF_MAXSTR) :: cvalue, tmpStr, scriptName
     character(ESMF_MAXSTR) :: timeStr
     character(ESMF_MAXSTR) :: message
@@ -169,9 +150,9 @@ contains
           write(tmpStr, '(A,I1)') 'catalyst/scripts/script', n
           call catalyst_conduit_node_set_path_char8_str(node, trim(tmpStr)//"/filename", trim(scriptNames(n)))
           ! Add arguments
-          scriptArgs = catalyst_conduit_node_fetch(node, trim(tmpStr)//"/args")
-          scriptArgsItem = catalyst_conduit_node_append(scriptArgs)
-          call catalyst_conduit_node_set_char8_str(scriptArgsItem, "--channel-name=ocn")
+          !scriptArgs = catalyst_conduit_node_fetch(node, trim(tmpStr)//"/args")
+          !scriptArgsItem = catalyst_conduit_node_append(scriptArgs)
+          !call catalyst_conduit_node_set_char8_str(scriptArgsItem, "--channel-name=ocn")
        end do
 
        ! Set implementation type
@@ -239,10 +220,13 @@ contains
     call catalyst_conduit_node_set_path_int32(node, "catalyst/state/timestep", step)
     call catalyst_conduit_node_set_path_float64(node, "catalyst/state/time", time)
 
+    ! Allocate myMesh
+    if (.not. allocated(myMesh)) allocate(myMesh(is_local%wrap%numComp))
+
     ! Add channel for all components
     do n = 1, is_local%wrap%numComp
-       ! Add content of state to Conduit node
-       call StateToChannel(is_local%wrap%NStateImp(n), trim(is_local%wrap%compName(n)), n, node, rc=rc)
+       ! Add content of FB to Conduit node
+       call FB2Channel(is_local%wrap%FBImp(n), trim(is_local%wrap%compName(n)), myMesh(n), node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end do
 
@@ -277,12 +261,12 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine StateToChannel(state, compName, id, node, rc)
+  subroutine FB2Channel(FBin, compName, myMesh, node, rc)
 
     ! input/output variables
-    type(ESMF_State), intent(in) :: state
+    type(ESMF_FieldBundle), intent(in) :: FBin 
     character(len=*), intent(in) :: compName
-    integer, intent(in) :: id
+    type(meshType), intent(inout) :: myMesh
     type(C_PTR), intent(inout) :: node
     integer, intent(out), optional :: rc
 
@@ -290,19 +274,13 @@ contains
     type(C_PTR) :: channel
     type(C_PTR) :: mesh
     type(C_PTR) :: fields
-    integer :: n, m, itemCount
-    integer :: spatialDim, dataSize
-    logical :: hasTri = .false., hasQuad = .false.
+    integer :: n, m
+    integer :: fieldCount, dataSize
     type(ESMF_Mesh) :: fmesh
     type(ESMF_Field) :: field
-    type(ESMF_CoordSys_Flag) :: coordSys
     real(ESMF_KIND_R8), pointer :: farrayPtr(:)
-    real(ESMF_KIND_R8), allocatable :: nodeCoords(:)
-    real(ESMF_KIND_R8) :: theta, phi
-    character(ESMF_MAXSTR), allocatable :: itemNameList(:)
-    type(ESMF_StateItem_Flag), allocatable :: itemTypeList(:)
-    character(ESMF_MAXSTR) :: message
-    character(len=*), parameter :: subname = trim(modName)//':(StateToChannel) '
+    character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
+    character(len=*), parameter :: subname = trim(modName)//':(FB2Channel) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
@@ -311,229 +289,110 @@ contains
     ! Add channel
     channel = catalyst_conduit_node_fetch(node, "catalyst/channels/"//trim(compName))
 
-    ! Query state
-    call ESMF_StateGet(state, itemCount=itemCount, rc=rc)
+    ! Query number of item in the FB
+    call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    if (itemCount > 0) then
-       ! Allocate temporary arrays
-       allocate(itemNameList(itemCount))
-       allocate(itemTypeList(itemCount))
+    allocate(fieldNameList(fieldCount))
 
-       ! Query item names and types
-       call ESMF_StateGet(state, itemNameList=itemNameList, itemTypeList=itemTypeList, rc=rc)
+    call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Loop over fields
+    do n = 1, fieldCount
+       ! Query field
+       call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       ! Query coordinate information from first field
+       if (n == 1) then
+          ! Add mesh to channel
+          call catalyst_conduit_node_set_path_char8_str(channel, "type", "mesh")
+
+          ! Create mesh node
+          mesh = catalyst_conduit_node_fetch(channel, "data")
+
+          ! Set type of mesh, construct as an unstructured mesh
+          call catalyst_conduit_node_set_path_char8_str(mesh, "coordsets/coords/type", "explicit")
+
+          if (.not. allocated(myMesh%nodeCoordsX)) then
+             ! Query mesh
+             call ESMF_FieldGet(field, mesh=fmesh, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             ! Ingest ESMF mesh
+             call IngestMeshData(fmesh, myMesh, trim(compName), cartesian=convertToCart, rc=rc)
+             if (chkerr(rc,__LINE__,u_FILE_u)) return
+          end if
+
+          ! Add coordinates
+          call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/x", &
+             myMesh%nodeCoordsX, int8(myMesh%nodeCount))
+          call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/y", &
+             myMesh%nodeCoordsY, int8(myMesh%nodeCount))
+          call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/z", &
+             myMesh%nodeCoordsZ, int8(myMesh%nodeCount))
+
+          ! Add topology
+          call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/type", "unstructured")
+          call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/coordset", "coords")
+          call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/elements/shape", trim(myMesh%elementShape))
+          do m = 1, size(myMesh%elementShapeMapName, dim=1)
+             call catalyst_conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/"// &
+               trim(myMesh%elementShapeMapName(m)), myMesh%elementShapeMapValue(m))
+          end do
+          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/shapes", myMesh%elementTypesShape, int8(myMesh%elementCount))
+          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/sizes", myMesh%elementTypes, int8(myMesh%elementCount))
+          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/offsets", myMesh%elementTypesOffset, int8(myMesh%elementCount))
+          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/connectivity", myMesh%elementConn, int8(myMesh%numElementConn))
+
+          ! Create node for fields
+          fields = catalyst_conduit_node_fetch(mesh, "fields")
+
+          ! Add mask information
+          if (myMesh%elementMaskIsPresent) then
+             call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
+             call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/topology", "mesh")
+             call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/volume_dependent", "false")
+             call catalyst_conduit_node_set_path_external_int32_ptr(fields, "element_mask/values", &
+                myMesh%elementMask, int8(myMesh%elementCount))
+          end if
+          if (myMesh%nodeMaskIsPresent) then
+             call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/association", "vertex")
+             call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/topology", "mesh")
+             call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/volume_dependent", "false")
+             call catalyst_conduit_node_set_path_external_int32_ptr(fields, "node_mask/values", &
+                myMesh%nodeMask, int8(myMesh%nodeCount))
+          end if
+       end if ! n == 1
+
+       ! Query field pointer
+       call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Loop over items
-       do n = 1, itemCount
-          ! Check if item is field
-          if (itemTypeList(n) == ESMF_STATEITEM_FIELD) then
-             ! Query field
-             call ESMF_StateGet(state, itemName=itemNameList(n), field=field, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       ! Add fields to node
+       if (size(farrayPtr, dim=1) == myMesh%elementCount) then
+          dataSize = myMesh%elementCount
+          call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "element")
+       else
+          dataSize = myMesh%nodeCount
+          call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "vertex")
+       end if
 
-             ! Prepare mesh data for Catalyst node
-             if (.not. allocated(myMesh(id)%nodeCoordsX)) then
-                ! Query field mesh
-                call ESMF_FieldGet(field, mesh=fmesh, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/topology", "mesh")
+       call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/volume_dependent", "false")
+       call catalyst_conduit_node_set_path_external_float64_ptr(fields, &
+          trim(fieldNameList(n))//"/values", farrayPtr, int8(dataSize))
 
-                ! Extract required information from mesh
-                call ESMF_MeshGet(fmesh, spatialDim=spatialDim, nodeCount=myMesh(id)%nodeCount, &
-                   elementCount=myMesh(id)%elementCount, nodeMaskIsPresent=myMesh(id)%nodeMaskIsPresent, &
-                   elementMaskIsPresent=myMesh(id)%elementMaskIsPresent, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       ! Init pointers
+       nullify(farrayPtr)
+    end do ! fieldCount
 
-                ! Allocate coordinate and element type arrays
-                allocate(myMesh(id)%nodeCoordsX(myMesh(id)%nodeCount))
-                allocate(myMesh(id)%nodeCoordsY(myMesh(id)%nodeCount))
-                allocate(myMesh(id)%nodeCoordsZ(myMesh(id)%nodeCount))
-                allocate(myMesh(id)%elementTypes(myMesh(id)%elementCount))
-                allocate(myMesh(id)%elementTypesShape(myMesh(id)%elementCount))
-                allocate(myMesh(id)%elementTypesOffset(myMesh(id)%elementCount))
-
-                ! Get element types to find final numElementConn
-                call ESMF_MeshGet(fmesh, elementTypes=myMesh(id)%elementTypes, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                myMesh(id)%numElementConn = sum(myMesh(id)%elementTypes, dim=1)
-
-                ! Allocate element connection array
-                allocate(myMesh(id)%elementConn(myMesh(id)%numElementConn))
-
-                ! Get coordinates
-                allocate(nodeCoords(spatialDim*myMesh(id)%nodeCount))
-                call ESMF_MeshGet(fmesh, nodeCoords=nodeCoords, coordSys=coordSys, &
-                   elementConn=myMesh(id)%elementConn, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                do m = 1, myMesh(id)%nodeCount
-                   myMesh(id)%nodeCoordsX(m) = nodeCoords(2*m-1)
-                   myMesh(id)%nodeCoordsY(m) = nodeCoords(2*m)
-                end do
-                deallocate(nodeCoords)
-
-                ! Convert lat-lon to cartesian
-                if (convertToCart) then
-                   ! Calculate cartesian coordinates
-                   if (coordSys == ESMF_COORDSYS_SPH_DEG) then
-                      do m = 1, myMesh(id)%nodeCount
-                         if (myMesh(id)%nodeCoordsY(m) == 90.0d0) then
-                            myMesh(id)%nodeCoordsX(m) = 0.0d0
-                            myMesh(id)%nodeCoordsY(m) = 0.0d0
-                            myMesh(id)%nodeCoordsZ(m) = 1.0d0
-                         else if (myMesh(id)%nodeCoordsY(m) == -90.0d0) then
-                            myMesh(id)%nodeCoordsX(m) = 0.0d0
-                            myMesh(id)%nodeCoordsY(m) = 0.0d0
-                            myMesh(id)%nodeCoordsZ(m) = -1.0d0
-                         else
-                            theta = myMesh(id)%nodeCoordsX(m)*deg2Rad
-                            phi = (90.0d0-myMesh(id)%nodeCoordsY(m))*deg2Rad
-                            myMesh(id)%nodeCoordsX(m) = cos(theta)*sin(phi)
-                            myMesh(id)%nodeCoordsY(m) = sin(theta)*sin(phi)
-                            myMesh(id)%nodeCoordsZ(m) = cos(phi)
-                         end if
-                      end do
-                   else if (coordSys == ESMF_COORDSYS_SPH_RAD) then
-                      do m = 1, myMesh(id)%nodeCount
-                         theta = myMesh(id)%nodeCoordsX(m)
-                         phi = constHalfPi-myMesh(id)%nodeCoordsY(m)
-                         myMesh(id)%nodeCoordsX(m) = cos(theta)*sin(phi)
-                         myMesh(id)%nodeCoordsY(m) = sin(theta)*sin(phi)
-                         myMesh(id)%nodeCoordsZ(m) = cos(phi)
-                      end do
-                   end if
-                else
-                   myMesh(id)%nodeCoordsZ(:) = 0.0d0
-                end if
-
-                ! Get mask information
-                if (myMesh(id)%elementMaskIsPresent) then
-                   allocate(myMesh(id)%elementMask(myMesh(id)%elementCount))
-                   call ESMF_MeshGet(fmesh, elementMask=myMesh(id)%elementMask, rc=rc)
-                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-                end if
-
-                if (myMesh(id)%nodeMaskIsPresent) then
-                   allocate(myMesh(id)%nodeMask(myMesh(id)%nodeCount))
-                   call ESMF_MeshGet(fmesh, nodeMask=myMesh(id)%nodeMask, rc=rc)
-                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-                end if
-
-                ! Find out element types
-                ! At this point only supports triangles and quads and their mixtures
-                do m = 1, myMesh(id)%elementCount
-                   if (myMesh(id)%elementTypes(m) == 3) then
-                      hasTri = .true.
-                      myMesh(id)%elementShape = "tri"
-                      myMesh(id)%elementTypesShape(m) = 5 ! VTK_TRIANGLE
-                   else if (myMesh(id)%elementTypes(m) == 4) then
-                      hasQuad = .true.
-                      myMesh(id)%elementShape = "quad"
-                      myMesh(id)%elementTypesShape(m) = 9 ! VTK_QUAD
-                   else
-                      write(message, fmt='(A,I,A)') trim(subname)//": Failed to execute Catalyst: "// &
-                         "only tri, quad and their mixtures are supported as element shape. "// &
-                         "The given mesh has elements with ", myMesh(id)%elementTypes(m), " nodes."
-                      call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
-                      rc = ESMF_FAILURE
-                      return
-                   end if
-                end do
-
-                if (hasTri .and. hasQuad) myMesh(id)%elementShape = "mixed"
-
-                ! Calculate element offsets
-                myMesh(id)%elementTypesOffset(1) = 0
-                do m = 2, myMesh(id)%elementCount
-                   myMesh(id)%elementTypesOffset(m) = myMesh(id)%elementTypesOffset(m-1)+myMesh(id)%elementTypes(m-1)
-                end do
-
-                ! Set element connection (Conduit uses 0-based indexes but ESMF is 1-based)
-                myMesh(id)%elementConn(:) = myMesh(id)%elementConn(:)-1
-             end if
-
-             ! Add mesh information to Catalyst node
-             if (n == 1) then
-                ! Add mesh to channel
-                call catalyst_conduit_node_set_path_char8_str(channel, "type", "mesh")
-
-                ! Create mesh node
-                mesh = catalyst_conduit_node_fetch(channel, "data")
-
-                ! Set type of mesh, construct as an unstructured mesh
-                call catalyst_conduit_node_set_path_char8_str(mesh, "coordsets/coords/type", "explicit")
-
-                ! Add coordinates
-                call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/x", &
-                   myMesh(id)%nodeCoordsX, int8(myMesh(id)%nodeCount))
-                call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/y", &
-                   myMesh(id)%nodeCoordsY, int8(myMesh(id)%nodeCount))
-                call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/z", &
-                   myMesh(id)%nodeCoordsZ, int8(myMesh(id)%nodeCount))
-
-                ! Add topology
-                call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/type", "unstructured")
-                call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/coordset", "coords")
-                call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/elements/shape", trim(myMesh(id)%elementShape))
-                if (hasTri) call catalyst_conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/tri", 5)
-                if (hasQuad) call catalyst_conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/quad", 9)
-                call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/shapes", myMesh(id)%elementTypesShape, int8(myMesh(id)%elementCount))
-                call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/sizes", myMesh(id)%elementTypes, int8(myMesh(id)%elementCount))
-                call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/offsets", myMesh(id)%elementTypesOffset, int8(myMesh(id)%elementCount))
-                call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/connectivity", myMesh(id)%elementConn, int8(myMesh(id)%numElementConn))
-
-                ! Create node for fields
-                fields = catalyst_conduit_node_fetch(mesh, "fields")
-
-                ! Add mask information
-                if (myMesh(id)%elementMaskIsPresent) then
-                   call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
-                   call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/topology", "mesh")
-                   call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/volume_dependent", "false")
-                   call catalyst_conduit_node_set_path_external_int32_ptr(fields, "element_mask/values", &
-                      myMesh(id)%elementMask, int8(myMesh(id)%elementCount))
-                end if
-                if (myMesh(id)%nodeMaskIsPresent) then
-                   call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/association", "vertex")
-                   call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/topology", "mesh")
-                   call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/volume_dependent", "false")
-                   call catalyst_conduit_node_set_path_external_int32_ptr(fields, "node_mask/values", &
-                      myMesh(id)%nodeMask, int8(myMesh(id)%nodeCount))
-                end if
-             end if
-
-             ! Query field pointer
-             call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             ! Add fields to Catalyst node
-             if (size(farrayPtr, dim=1) == myMesh(id)%elementCount) then
-                dataSize = myMesh(id)%elementCount
-                call catalyst_conduit_node_set_path_char8_str(fields, trim(itemNameList(n))//"/association", "element")
-             else
-                dataSize = myMesh(id)%nodeCount
-                call catalyst_conduit_node_set_path_char8_str(fields, trim(itemNameList(n))//"/association", "vertex")
-             end if
-             call catalyst_conduit_node_set_path_char8_str(fields, trim(itemNameList(n))//"/topology", "mesh")
-             call catalyst_conduit_node_set_path_char8_str(fields, trim(itemNameList(n))//"/volume_dependent", "false")
-             call catalyst_conduit_node_set_path_external_float64_ptr(fields, &
-                trim(itemNameList(n))//"/values", farrayPtr, int8(dataSize))
-
-             ! Init pointers
-             nullify(farrayPtr)
-
-          end if ! itemTypeList
-       end do
-
-       ! Clean memory
-       deallocate(itemNameList)
-       deallocate(itemTypeList)
-
-    end if ! itemCount
+    ! Clean memeory
+    deallocate(fieldNameList)
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
-  end subroutine StateToChannel
+  end subroutine FB2Channel
 
 end module geogate_phases_catalyst

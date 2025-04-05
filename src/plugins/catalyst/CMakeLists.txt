@@ -6,6 +6,7 @@ else()
 endif()
 
 add_library(geogate_catalyst ${SRCFILES})
+add_dependencies(geogate_catalyst geogate_shared)
 
 if(catalyst_FOUND)
   message(INFO " catalyst_DIR = ${catalyst_DIR}")
