@@ -6,7 +6,7 @@ env:
   conduit_version: 0.9.2
   paraview_version: 5.13.1
   paraview_headless_type: osmesa  
-  compiler_version: 12.3.0
+  compiler_version: 14.2.0
   install_dir: ${{ github.workspace }}/app
 
 on:
@@ -41,7 +41,9 @@ jobs:
       id: restore-cache
       uses: actions/cache/restore@v4
       with:
-        path: ${{ env.install_dir }}/spack 
+        path: |
+          ${{ env.install_dir }}/spack 
+          /home/runner/.spack
         key: |
           spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
@@ -58,7 +60,9 @@ jobs:
       if: steps.restore-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ env.install_dir }}/spack
+        path: |
+          ${{ env.install_dir }}/spack
+          /home/runner/.spack
         key: |
           spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
@@ -124,9 +128,14 @@ jobs:
         cd ${{ env.install_dir }}
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
+        spack env activate test
         module load esmf
         module load libcatalyst
         module load conduit
+        export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
         echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
