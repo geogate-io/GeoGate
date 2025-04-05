@@ -39,7 +39,6 @@ echo "::group::Create config.yaml"
 spack config add "modules:default:enable:[tcl]"
 spack config add "config:url_fetch_method:curl"
 spack config add "config:connect_timeout:60"
-#spack config add "config:environments_root:$install_dir/spack-env"
 cat ~/.spack/config.yaml
 echo "::endgroup::"
 
