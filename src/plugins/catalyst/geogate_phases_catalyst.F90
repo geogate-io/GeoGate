@@ -196,7 +196,7 @@ contains
        ! Initialize catalyst
        err = c_catalyst_initialize(node)
        if (err /= catalyst_status_ok) then
-          write(message, fmt='(A,I)') trim(subname)//": Failed to initialize Catalyst: ", err
+          write(message, fmt='(A,I2)') trim(subname)//": Failed to initialize Catalyst: ", err
           call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
           rc = ESMF_FAILURE
           return
@@ -246,7 +246,7 @@ contains
     ! Execute catalyst
     err = c_catalyst_execute(node)
     if (err /= catalyst_status_ok) then
-       write(message, fmt='(A,I)') trim(subname)//": Failed to execute Catalyst: ", err
+       write(message, fmt='(A,I2)') trim(subname)//": Failed to execute Catalyst: ", err
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
        rc = ESMF_FAILURE
        return
