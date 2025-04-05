@@ -111,3 +111,40 @@ jobs:
         make
         make install
       shell: bash
+
+    - name: Create Executable with ESMX
+      run: |
+        cd ${{ env.install_dir }}
+        . spack/share/spack/setup-env.sh
+        . $(spack location -i lmod)/lmod/lmod/init/bash
+        module load esmf
+        module load libcatalyst
+        module load conduit
+        echo "application:" > esmxBuild.yaml 
+        echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
+        echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+        python_static_lib=`python ${{ env.install_dir }}/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
+        echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
+        echo "components:" >> esmxBuild.yaml
+        echo "  datm:" >> esmxBuild.yaml
+        echo "    build_type: none" >> esmxBuild.yaml
+        echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
+        echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
+        echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
+        echo "  docn:" >> esmxBuild.yaml
+        echo "    build_type: none" >> esmxBuild.yaml
+        echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
+        echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
+        echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
+        echo "  geogate:" >> esmxBuild.yaml
+        echo "    build_type: none" >> esmxBuild.yaml
+        echo "    install_prefix: ${{ env.install_dir }}/geogate/install" >> esmxBuild.yaml
+        echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
+        echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
+        echo "::group::Content of esmxBuild.yaml"
+        cat esmxBuild.yaml
+        echo "::endgroup::"
+        echo "::group::Build Application"
+        ESMX_Builder -v
+        echo "::endgroup::"
+      shell: bash
