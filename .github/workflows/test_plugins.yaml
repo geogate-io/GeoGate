@@ -30,8 +30,11 @@ jobs:
           python3-dev python3-pip python3-yaml \
           curl libcurl4-openssl-dev tcl tcl-dev \
           libosmesa6-dev libegl1-mesa-dev mesa-utils
-        
-        ls /usr/bin/llvm-config
+        compiler_major_version=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+        echo $compiler_major_version
+        sudo update-alternatives --set gcc "/usr/bin/gcc-$compiler_major_version"
+        sudo update-alternatives --set g++ "/usr/bin/g++-$compiler_major_version"
+        sudo update-alternatives --set gfortran "/usr/bin/gfortran-$compiler_major_version"
       shell: bash
 
     - name: Checkout Component Repository
@@ -100,7 +103,6 @@ jobs:
         cd ${{ env.install_dir }}
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack load gcc@${{ env.compiler_version }}
         which gcc
         which gfortran
         module load esmf
