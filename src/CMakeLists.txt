@@ -30,7 +30,7 @@ include_directories(${MPI_Fortran_INCLUDE_PATH})
 
 # Find ESMF
 if(NOT ESMF_FOUND)
-  find_package(ESMF 8.8.0 REQUIRED)
+  find_package(ESMF 8.6.0 REQUIRED)
 endif()
 
 # Find Catalyst

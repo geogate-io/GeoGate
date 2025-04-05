@@ -189,7 +189,7 @@ contains
           myMesh%elementShape = "quad"
           myMesh%elementTypesShape(m) = 9 ! VTK_QUAD
        else
-          write(message, fmt='(A,I,A)') trim(subname)//": Only tri, quad and their mixtures "// &
+          write(message, fmt='(A,I2,A)') trim(subname)//": Only tri, quad and their mixtures "// &
              "are supported as element shape. The given mesh has elements with ", myMesh%elementTypes(m), " nodes."
           call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
           rc = ESMF_FAILURE
