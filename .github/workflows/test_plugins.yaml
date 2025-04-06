@@ -52,7 +52,12 @@ jobs:
       run: |
         echo "steps.restore-cache.outputs.cache-hit = ${{ steps.restore-cache.outputs.cache-hit }}"
         ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
-          -i ${{ env.install_dir }}
+          -c gcc@${{ env.compiler_version }} \
+          -e ${{ env.esmf_version }} \
+          -i ${{ env.install_dir }} \
+          -s prereleases/${{ env.spack_ver }} \
+          -p ${{ env.paraview_version }} \
+          -v ${{ env.paraview_headless_type }}
       shell: bash
 
     - name: Save Dependencies to Cache
