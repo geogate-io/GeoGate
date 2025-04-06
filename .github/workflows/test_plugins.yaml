@@ -42,7 +42,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: |
-          ${{ env.install_dir }}/spack 
+          ${{ env.install_dir }}/spack
           /home/runner/.spack
         key: |
           spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
