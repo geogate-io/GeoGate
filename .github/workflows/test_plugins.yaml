@@ -4,9 +4,9 @@ env:
   spack_version: v1.0.0-alpha.2
   esmf_version: 8.8.0
   conduit_version: 0.9.2
-  paraview_version: 5.13.1
+  paraview_version: 5.13.2
   paraview_headless_type: osmesa  
-  compiler_version: 12.3.0 #14.2.0
+  compiler_version: 14.2.0
   install_dir: ${{ github.workspace }}/app
 
 on:
