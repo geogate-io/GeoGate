@@ -73,12 +73,22 @@ echo "::endgroup::"
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
-spack add lmod%${comp}
-spack add esmf@${esmf_ver}%${comp}+external-parallelio ^parallelio@2.5.10%${comp}
+spack add lmod
+spack add esmf@${esmf_ver}%${comp}+external-parallelio
 spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python ^conduit@0.9.2%${comp}+python~hdf5~parmetis
 spack add paraview@${paraview_ver}%${comp}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${paraview_backend} ^libcatalyst@2.0.0%${comp}+fortran~ipo+python
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
-spack --color always install 2>&1 | tee log.install
+exc=$?
+if [ $exc -ne 0 ]; then
+  echo "Error in concretizing dependencies! Exit code is $exc ..."
+  exit $exc
+fi
+spack --color always install -j3 2>&1 | tee log.install
+exc=$?
+if [ $exc -ne 0 ]; then
+  echo "Error in installing dependencies! Exit code is $exc ..."
+  exit $exc
+fi
 spack --color always gc -y  2>&1 | tee log.clean
 spack find -c
 echo "::endgroup::"
