@@ -73,6 +73,10 @@ echo "::endgroup::"
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
+spack add "packages:all:target:['x86_64']"
+spack add "packages:all:providers:mpi:[openmpi]"
+spack add "concretizer:targets:host_compatible:false"
+spack add "concretizer:unify:when_possible"
 spack add lmod
 spack add esmf@${esmf_ver}%${comp}+external-parallelio
 #spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python ^conduit@0.9.2%${comp}+python~hdf5~parmetis
