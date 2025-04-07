@@ -84,7 +84,8 @@ spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.conc
 #  exit $exc
 #fi
 spack spec
-cat var/spack/environments/test/spack.yaml
+ls /home/runner/work/GeoGate/GeoGate/app/spack/var/spack/environments/test
+cat /home/runner/work/GeoGate/GeoGate/app/spack/var/spack/environments/test/spack.yaml
 #spack --color always install -j3 2>&1 | tee log.install
 #exc=$?
 #if [ $exc -ne 0 ]; then
