@@ -111,18 +111,11 @@ jobs:
           if [ -n "${{ inputs.spack }}" ]; then
             spack_ver="${{ inputs.spack }}"
           fi
-          config="{\"deps\": \"lmod\", \
-                             \"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\" \
-                  }"
-          echo "config=${config} | tr -d \" \"" >> $GITHUB_OUTPUT 
+          config="{\"deps\": \"lmod\", \"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\"}"
+          echo "config=${config}" >> $GITHUB_OUTPUT 
           echo "compiler=${compiler}@${compiler_ver}" >> $GITHUB_OUTPUT
           echo "coupling_type=${coupling_type}" >> $GITHUB_OUTPUT
           echo "spack_ver=${spack_ver}" >> $GITHUB_OUTPUT
-
-#spack add lmod
-#spack add esmf@${esmf_ver}%${comp}+external-parallelio
-#spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python ^conduit@0.9.2%${comp}+python~hdf5~parmetis
-#spack add paraview@${paraview_ver}%${comp}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${paraview_backend} ^libcatalyst@2.0.0%${comp}+fortran~ipo+python
 
   build:
     runs-on: ubuntu-24.04
