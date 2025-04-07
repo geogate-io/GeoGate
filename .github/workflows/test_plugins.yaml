@@ -148,10 +148,10 @@ jobs:
     #      -${{ env.esmf }} >> $GITHUB_ENV  
     #  shell: bash
 
-    #- name: Checkout Component Repository
-    #  uses: actions/checkout@v4
-    #  with:
-    #    path: ${{ github.workspace }}/app/geogate
+    - name: Checkout Component Repository
+      uses: actions/checkout@v4
+      with:
+        path: ${{ github.workspace }}/app/geogate
 
     #- name: Restore Cached Dependencies
     #  id: restore-cache
