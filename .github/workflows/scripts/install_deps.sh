@@ -1,15 +1,13 @@
 #!/bin/bash
 
 # Command line arguments
-while getopts c:e:i:p:s:v: flag
+while getopts c:d:i:s: flag
 do
   case "${flag}" in
     c) comp=${OPTARG};;
-    e) esmf_ver=${OPTARG};;
+    d) deps=${OPTARG};;
     i) install_dir=${OPTARG};;
-    p) paraview_ver=${OPTARG};;
     s) spack_ver=${OPTARG};;
-    v) paraview_backend=${OPTARG};;
   esac
 done
 
@@ -17,33 +15,21 @@ if [[ -z "$comp" || ! -z `echo $comp | grep '^-'` ]]; then
   comp="gcc@12.3.0"
 fi
 
-if [[ -z "$esmf_ver" || ! -z `echo $esmf_ver | grep '^-'` ]]; then
-  esmf_ver="develop"
-fi
-
 if [[ -z "$install_dir" || ! -z `echo $install_dir | grep '^-'` ]]; then
   install_dir="$HOME/.spack-ci"
-fi
-
-if [[ -z "$paraview_ver" || ! -z `echo $paraview_ver | grep '^-'` ]]; then
-  paraview_ver="master"
 fi
 
 if [[ -z "$spack_ver" || ! -z `echo $spack_ver | grep '^-'` ]]; then
   spack_ver="develop"
 fi
 
-if [[ -z "$paraview_backend" || ! -z `echo $paraview_backend | grep '^-'` ]]; then
-  paraview_backend="osmesa"
-fi
-
 # Print out arguments
 echo "Compiler Version : $comp"
-echo "ESMF Version     : $esmf_ver"
+echo "Dependencies     : $deps"
 echo "Install Directory: $install_dir"
-echo "ParaView Version : $paraview_ver"
 echo "Spack Version    : $spack_ver"
-echo "ParaView Backend : $paraview_backend"
+
+exit
 
 # Go to installation directory
 cd $install_dir
