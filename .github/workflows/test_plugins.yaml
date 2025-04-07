@@ -47,7 +47,7 @@ on:
         type: string
         default: 'develop'
       coupling:
-        description: 'Coupling type"
+        description: 'Coupling type'
         required: false
         type: choice
         options:
