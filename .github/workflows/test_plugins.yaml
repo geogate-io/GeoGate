@@ -1,13 +1,19 @@
 name: Test plugins
 
 env:
-  spack_version: v1.0.0-alpha.2
-  esmf_version: 8.8.0
-  conduit_version: 0.9.2
-  paraview_version: 5.13.2
-  paraview_headless_type: osmesa  
-  compiler_version: 14.2.0
-  install_dir: ${{ github.workspace }}/app
+  backend: osmesa  
+  catalyst: 2.0.0
+  conduit: 0.9.2
+  compiler: gcc@14.2.0
+  coupling: spmd
+  esmf: 8.8.0
+  paraview: 5.13.2
+  spack: prereleases/v1.0.0-alpha.4
+
+defaults:
+  run:
+    shell: bash
+    working-directory: ${{ github.workspace }}/app 
 
 on:
   push:
@@ -16,6 +22,53 @@ on:
   #  types: [opened, synchronize, reopened, labeled, unlabeled]
   #  branches: [ main ]
   workflow_dispatch:
+    inputs:
+      backend:
+        description: 'ParaView backend for headless mode'
+        required: false
+        type: choice
+        options:
+          - egl
+          - osmesa
+        default: 'osmesa'
+      catalyst:
+        description: 'Catalyst version'
+        required: false
+        type: string
+        default: 'master'
+      compiler:
+        description: 'Compiler type and version'
+        required: false
+        type: string
+        default: 'gcc@latest'
+      conduit:
+        description: 'Conduit version'
+        required: false
+        type: string
+        default: 'develop'
+      coupling:
+        description: 'Coupling type"
+        required: false
+        type: choice
+        options:
+          - spmd
+          - mpmd
+        default: 'spmd'
+      esmf: 
+        description: 'ESMF version or tag like esmf@develop or esmf@=8.5.0b23'
+        required: false
+        type: string
+        default: 'develop'
+      paraview:
+        description: 'ParaView version'
+        required: false
+        type: string
+        default: 'master'
+      spack:
+        description: 'Spack version'
+        required: false
+        type: string
+        default: 'develop'
 
 jobs:
   build:
@@ -30,36 +83,38 @@ jobs:
           python3-dev python3-pip python3-yaml \
           curl libcurl4-openssl-dev tcl tcl-dev \
           libosmesa6-dev libegl1-mesa-dev mesa-utils
-      shell: bash
 
     - name: Checkout Component Repository
       uses: actions/checkout@v4
       with:
         path: ${{ env.install_dir }}/geogate
 
-    - name: Restore Cached Dependencies
-      id: restore-cache
-      uses: actions/cache/restore@v4
-      with:
-        path: |
-          ${{ env.install_dir }}/spack
-          /home/runner/.spack
-        key: |
-          spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
+    #- name: Restore Cached Dependencies
+    #  id: restore-cache
+    #  uses: actions/cache/restore@v4
+    #  with:
+    #    path: |
+    #      ${{ env.install_dir }}/spack
+    #      /home/runner/.spack
+    #    key: |
+    #      spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
-    - name: Create Spack Environment and Install Dependencies
-      id: spack-env
-      if: steps.restore-cache.outputs.cache-hit != 'true'
-      run: |
-        echo "steps.restore-cache.outputs.cache-hit = ${{ steps.restore-cache.outputs.cache-hit }}"
-        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
-          -c gcc@${{ env.compiler_version }} \
-          -e ${{ env.esmf_version }} \
-          -i ${{ env.install_dir }} \
-          -s prereleases/${{ env.spack_version }} \
-          -p ${{ env.paraview_version }} \
-          -v ${{ env.paraview_headless_type }}
-      shell: bash
+    #- name: Create Spack Environment and Install Dependencies
+    #  id: spack-env
+    #  if: steps.restore-cache.outputs.cache-hit != 'true'
+    #  run: |
+    #    echo "steps.restore-cache.outputs.cache-hit = ${{ steps.restore-cache.outputs.cache-hit }}"
+    #    
+    #    #"$(echo "${{ inputs.dependencies }}" | sed -z 's/\n/:/g' | sed 's/:$//')" \
+
+    #    ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+    #      -c gcc@${{ env.compiler_version }} \
+    #      -e ${{ env.esmf_version }} \
+    #      -i ${{ env.install_dir }} \
+    #      -s prereleases/${{ env.spack_version }} \
+    #      -p ${{ env.paraview_version }} \
+    #      -v ${{ env.paraview_headless_type }}
+    #  shell: bash
 
     #- name: Save Dependencies to Cache
     #  id: save-cache
@@ -72,101 +127,101 @@ jobs:
     #    key: |
     #      spack-${{ runner.os }}-gcc_${{ env.compiler_version }}-esmf_${{ env.esmf_version }}-conduit_${{ env.conduit_version }}-paraview_${{ env.paraview_version }}_${{ env.paraview_headless_type }}
 
-    - name: Checkout CDEPS Data Components
-      uses: actions/checkout@v4
-      with:
-        repository: ESCOMP/CDEPS
-        path: ${{ env.install_dir }}/cdeps
-        submodules: true
+    #- name: Checkout CDEPS Data Components
+    #  uses: actions/checkout@v4
+    #  with:
+    #    repository: ESCOMP/CDEPS
+    #    path: ${{ env.install_dir }}/cdeps
+    #    submodules: true
 
-    - name: Install CDEPS
-      run: |
-        cd ${{ env.install_dir }}
-        . spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack env activate test
-        module load esmf
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
-        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
-        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
-        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        cd ${{ env.install_dir }}/cdeps
-        mkdir build
-        cd build
-        cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/cdeps/install \
-          -DPIO_C_LIBRARY=$parallelio_ROOT/lib \
-          -DPIO_C_INCLUDE_DIR=$parallelio_ROOT/include \
-          -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
-          -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
-          -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
-          -DDISABLE_FoX=ON ../
-        make
-        make install
-      shell: bash
+    #- name: Install CDEPS
+    #  run: |
+    #    cd ${{ env.install_dir }}
+    #    . spack/share/spack/setup-env.sh
+    #    . $(spack location -i lmod)/lmod/lmod/init/bash
+    #    spack env activate test
+    #    module load esmf
+    #    export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+    #    export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+    #    export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+    #    export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+    #    cd ${{ env.install_dir }}/cdeps
+    #    mkdir build
+    #    cd build
+    #    cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/cdeps/install \
+    #      -DPIO_C_LIBRARY=$parallelio_ROOT/lib \
+    #      -DPIO_C_INCLUDE_DIR=$parallelio_ROOT/include \
+    #      -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
+    #      -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
+    #      -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
+    #      -DDISABLE_FoX=ON ../
+    #    make
+    #    make install
+    #  shell: bash
 
-    - name: Install GeoGate
-      run: |
-        cd ${{ env.install_dir }}
-        . spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack env activate test
-        module load esmf
-        module load libcatalyst
-        module load conduit
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
-        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
-        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
-        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        cd ${{ env.install_dir }}/geogate
-        mkdir build
-        cd build
-        cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/geogate/install \
-           -DGEOGATE_USE_PYTHON=ON \
-           -DGEOGATE_USE_CATALYST=ON \
-           -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
-           ../src/
-        make
-        make install
-      shell: bash
+    #- name: Install GeoGate
+    #  run: |
+    #    cd ${{ env.install_dir }}
+    #    . spack/share/spack/setup-env.sh
+    #    . $(spack location -i lmod)/lmod/lmod/init/bash
+    #    spack env activate test
+    #    module load esmf
+    #    module load libcatalyst
+    #    module load conduit
+    #    export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+    #    export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+    #    export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+    #    export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+    #    cd ${{ env.install_dir }}/geogate
+    #    mkdir build
+    #    cd build
+    #    cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/geogate/install \
+    #       -DGEOGATE_USE_PYTHON=ON \
+    #       -DGEOGATE_USE_CATALYST=ON \
+    #       -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
+    #       ../src/
+    #    make
+    #    make install
+    #  shell: bash
 
-    - name: Create Executable with ESMX
-      run: |
-        cd ${{ env.install_dir }}
-        . spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack env activate test
-        module load esmf
-        module load libcatalyst
-        module load conduit
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
-        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
-        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
-        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        echo "application:" > esmxBuild.yaml 
-        echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
-        echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
-        python_static_lib=`python ${{ env.install_dir }}/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
-        echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
-        echo "components:" >> esmxBuild.yaml
-        echo "  datm:" >> esmxBuild.yaml
-        echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
-        echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
-        echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
-        echo "  docn:" >> esmxBuild.yaml
-        echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
-        echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
-        echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
-        echo "  geogate:" >> esmxBuild.yaml
-        echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ env.install_dir }}/geogate/install" >> esmxBuild.yaml
-        echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
-        echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
-        echo "::group::Content of esmxBuild.yaml"
-        cat esmxBuild.yaml
-        echo "::endgroup::"
-        echo "::group::Build Application"
-        ESMX_Builder -v
-        echo "::endgroup::"
-      shell: bash
+    #- name: Create Executable with ESMX
+    #  run: |
+    #    cd ${{ env.install_dir }}
+    #    . spack/share/spack/setup-env.sh
+    #    . $(spack location -i lmod)/lmod/lmod/init/bash
+    #    spack env activate test
+    #    module load esmf
+    #    module load libcatalyst
+    #    module load conduit
+    #    export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+    #    export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+    #    export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+    #    export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+    #    echo "application:" > esmxBuild.yaml 
+    #    echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
+    #    echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+    #    python_static_lib=`python ${{ env.install_dir }}/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
+    #    echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
+    #    echo "components:" >> esmxBuild.yaml
+    #    echo "  datm:" >> esmxBuild.yaml
+    #    echo "    build_type: none" >> esmxBuild.yaml
+    #    echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
+    #    echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
+    #    echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
+    #    echo "  docn:" >> esmxBuild.yaml
+    #    echo "    build_type: none" >> esmxBuild.yaml
+    #    echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
+    #    echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
+    #    echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
+    #    echo "  geogate:" >> esmxBuild.yaml
+    #    echo "    build_type: none" >> esmxBuild.yaml
+    #    echo "    install_prefix: ${{ env.install_dir }}/geogate/install" >> esmxBuild.yaml
+    #    echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
+    #    echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
+    #    echo "::group::Content of esmxBuild.yaml"
+    #    cat esmxBuild.yaml
+    #    echo "::endgroup::"
+    #    echo "::group::Build Application"
+    #    ESMX_Builder -v
+    #    echo "::endgroup::"
+    #  shell: bash
