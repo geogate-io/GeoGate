@@ -10,11 +10,6 @@ env:
   paraview: 5.13.2
   spack: prereleases/v1.0.0-alpha.4
 
-defaults:
-  run:
-    shell: bash
-    working-directory: ${{ github.workspace }}/app 
-
 on:
   push:
     branches: [ main, feature/cicd ]
@@ -83,6 +78,7 @@ jobs:
           python3-dev python3-pip python3-yaml \
           curl libcurl4-openssl-dev tcl tcl-dev \
           libosmesa6-dev libegl1-mesa-dev mesa-utils
+      shell: bash
 
     - name: Checkout Component Repository
       uses: actions/checkout@v4
