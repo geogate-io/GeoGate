@@ -167,7 +167,7 @@ jobs:
       id: spack-env
     #  if: steps.restore-cache.outputs.cache-hit != 'true'
       run: |
-        ${{ env.install_dir }}/geogate/.github/workflows/scripts/install_deps.sh \
+        ${{ env.install_dir }}/app/geogate/.github/workflows/scripts/install_deps.sh \
           -c ${{ needs.setup-run.outputs.compiler }} \
           -d "$(echo "${{ needs.setup-run.outputs.config }}" | sed -z 's/\n/:/g' | sed 's/:$//')" \
           -i ${{ env.install_dir }} \
