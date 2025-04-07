@@ -114,7 +114,7 @@ jobs:
           config="{\"deps\": \"lmod\", \
                              \"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\" \
                   }"
-          echo "config=${config}" >> $GITHUB_OUTPUT 
+          echo "config=${config} | tr -d \" \"" >> $GITHUB_OUTPUT 
           echo "compiler=${compiler}@${compiler_ver}" >> $GITHUB_OUTPUT
           echo "coupling_type=${coupling_type}" >> $GITHUB_OUTPUT
           echo "spack_ver=${spack_ver}" >> $GITHUB_OUTPUT
@@ -131,8 +131,8 @@ jobs:
     - name: Print Out Setup
       run: |
         echo "config = ${{ needs.setup-run.outputs.config }}"
-        echo "compiler = ${{ needs.setup-run.compiler }}"
-        echo "coupling_type = ${{ needs.setup-run.coupling_type }}"
+        echo "compiler = ${{ needs.setup-run.outputs.compiler }}"
+        echo "coupling_type = ${{ needs.setup-run.outputs.coupling_type }}"
         echo "spack_ver = ${{ needs.setup-run.outputs.spack_ver }}" 
       shell: bash
 
