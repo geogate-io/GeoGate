@@ -32,7 +32,7 @@ echo "Spack Version    : $spack_ver"
 IFS=':' read -r -a array <<< "${deps}"
 for d in "${array[@]}"
 do
-  echo "  - $d target=x86_64 %${comp}" >> spack.yaml
+  echo "  - $d target=x86_64 %${comp}"
 done
 
 exit

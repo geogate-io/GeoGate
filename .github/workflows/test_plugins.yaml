@@ -169,7 +169,7 @@ jobs:
       run: |
         ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
           -c ${{ needs.setup-run.outputs.compiler }} \
-          -d "$(echo "${{ needs.setup-run.outputs.config }}" | sed -z 's/\n/:/g' | sed 's/:$//')" \
+          -d "${{ needs.setup-run.outputs.config }}" \
           -i ${{ github.workspace }}/app \
           -s ${{ needs.setup-run.outputs.spack_ver }} \
       shell: bash
