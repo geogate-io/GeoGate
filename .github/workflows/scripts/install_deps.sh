@@ -69,70 +69,14 @@ do
 done
 cat ${env_dir}/spack.yaml
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
+spack --color always install -j3 2>&1 | tee log.install
+spack --color always gc -y  2>&1 | tee log.clean
+spack find -c
 echo "::endgroup::"
 
-
-#IFS=':' read -r -a array <<< "${deps}"
-#for d in "${array[@]}"
-#do
-#  echo "  - $d target=x86_64 %${comp}"
-#done
-#spack_yaml="var/spack/environments/test/spack.yaml" 
-#echo "spack:" > ${spack_yaml}
-#echo "  concretizer:" >> ${spack_yaml} 
-#echo "    targets:" >> ${spack_yaml}
-#echo "      granularity: generic" >> ${spack_yaml}
-#echo "      host_compatible: false" >> ${spack_yaml}
-#echo "    unify: when_possible" >> ${spack_yaml}
-#echo "  specs:" >> ${spack_yaml}
-#IFS=':' read -r -a array <<< "${deps}"
-#for d in "${array[@]}"
-#do
-#  echo "  - $d target=$arch %$comp" >> spack.yaml
-#done
-#echo "  packages:" >> ${spack_yaml} 
-#echo "    all:" >> ${spack_yaml}
-#echo "      target: ['$arch']" >> ${spack_yaml}
-#echo "  view: $install_dir/view" >> spack.yaml
-#echo "  config:" >> spack.yaml
-#echo "    source_cache: $install_dir/source_cache" >> spack.yaml
-#echo "    misc_cache: $install_dir/misc_cache" >> spack.yaml
-#echo "    test_cache: $install_dir/test_cache" >> spack.yaml
-#echo "    install_tree:" >> spack.yaml
-#echo "      root: $install_dir/opt" >> spack.yaml
-#echo "    install_missing_compilers: true" >> spack.yaml
-#cat ${spack_yaml}
-
-#spack add "packages:all:target:['x86_64']"
-#spack add "packages:all:providers:mpi:[openmpi]"
-#spack add "concretizer:targets:host_compatible:false"
-#spack add "concretizer:unify:when_possible"
-#spack add lmod
-#spack add esmf@${esmf_ver}%${comp}+external-parallelio
-#spack add libcatalyst@2.0.0%${comp}+fortran~ipo+python ^conduit@0.9.2%${comp}+python~hdf5~parmetis
-#spack add paraview@${paraview_ver}%${comp}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${paraview_backend} ^libcatalyst@2.0.0%${comp}+fortran~ipo+python
-#spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
-#exc=$?
-#if [ $exc -ne 0 ]; then
-#  echo "Error in concretizing dependencies! Exit code is $exc ..."
-#  exit $exc
-#fi
-#spack spec
-#ls /home/runner/work/GeoGate/GeoGate/app/spack/var/spack/environments/test
-#cat /home/runner/work/GeoGate/GeoGate/app/spack/var/spack/environments/test/spack.yaml
-#spack --color always install -j3 2>&1 | tee log.install
-#exc=$?
-#if [ $exc -ne 0 ]; then
-#  echo "Error in installing dependencies! Exit code is $exc ..."
-#  exit $exc
-#fi
-#spack --color always gc -y  2>&1 | tee log.clean
-#spack find -c
-#echo "::endgroup::"
-
 # List available modules
-#echo "::group::List Modules"
-#. $(spack location -i lmod)/lmod/lmod/init/bash
-#. spack/share/spack/setup-env.sh
-#module avail
-#echo "::endgroup::"
+echo "::group::List Modules"
+. $(spack location -i lmod)/lmod/lmod/init/bash
+. spack/share/spack/setup-env.sh
+module avail
+echo "::endgroup::"
