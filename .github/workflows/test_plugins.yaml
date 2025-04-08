@@ -111,7 +111,7 @@ jobs:
           if [ -n "${{ inputs.spack }}" ]; then
             spack_ver="${{ inputs.spack }}"
           fi
-          config="{\"deps\": [\"lmod\", \"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\"]}"
+          config="\"lmod\":\"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\""
           echo "config=${config}" >> $GITHUB_OUTPUT 
           echo "compiler=${compiler}@${compiler_ver}" >> $GITHUB_OUTPUT
           echo "coupling_type=${coupling_type}" >> $GITHUB_OUTPUT
@@ -121,14 +121,6 @@ jobs:
     runs-on: ubuntu-24.04
     needs: setup-run
     steps:
-    #- name: Print Out Setup
-    #  run: |
-    #    echo "config = ${{ needs.setup-run.outputs.config }}"
-    #    echo "compiler = ${{ needs.setup-run.outputs.compiler }}"
-    #    echo "coupling_type = ${{ needs.setup-run.outputs.coupling_type }}"
-    #    echo "spack_ver = ${{ needs.setup-run.outputs.spack_ver }}" 
-    #  shell: bash
-
     - name: Install Core Development Tools
       run: |
         sudo apt-get -qq update
@@ -169,7 +161,7 @@ jobs:
       run: |
         ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
           -c ${{ needs.setup-run.outputs.compiler }} \
-          -d "${{ needs.setup-run.outputs.config }}" \
+          -d ${{ needs.setup-run.outputs.config }} \
           -i ${{ github.workspace }}/app \
           -s ${{ needs.setup-run.outputs.spack_ver }} \
       shell: bash
