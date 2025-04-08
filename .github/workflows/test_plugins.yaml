@@ -146,7 +146,7 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: |
-          ${{ env.install_dir }}/spack
+          ${{ github.workspace }}/app/spack
           /home/runner/.spack
         key: |
           ${{ needs.setup-run.outputs.cache_name }}
@@ -168,7 +168,7 @@ jobs:
       uses: actions/cache/save@v4
       with:
         path: |
-          ${{ env.install_dir }}/spack
+          ${{ github.workspace }}/app/spack
           /home/runner/.spack
         key: |
           ${{ needs.setup-run.outputs.cache_name }}          
@@ -177,12 +177,12 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: ESCOMP/CDEPS
-        path: ${{ env.install_dir }}/cdeps
+        path: ${{ github.workspace }}/app/cdeps
         submodules: true
 
     - name: Install CDEPS
       run: |
-        cd ${{ env.install_dir }}
+        cd ${{ github.workspace }}/app/cdeps
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
         spack env activate test
@@ -207,21 +207,21 @@ jobs:
 
     - name: Install GeoGate
       run: |
-        cd ${{ env.install_dir }}
+        cd ${{ github.workspace }}/app
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
         spack env activate test
         module load esmf
         module load libcatalyst
         module load conduit
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+        export COMPILER_MAJOR_VER=`echo ${{ needs.setup-run.outputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        cd ${{ env.install_dir }}/geogate
+        cd geogate
         mkdir build
         cd build
-        cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/geogate/install \
+        cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/geogate/install \
            -DGEOGATE_USE_PYTHON=ON \
            -DGEOGATE_USE_CATALYST=ON \
            -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
@@ -232,36 +232,36 @@ jobs:
 
     - name: Create Executable with ESMX
       run: |
-        cd ${{ env.install_dir }}
+        cd ${{ github.workspace }}/app
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
         spack env activate test
         module load esmf
         module load libcatalyst
         module load conduit
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler_version }} | awk -F. '{print $1}'`
+        export COMPILER_MAJOR_VER=`echo ${{ needs.setup-run.outputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
         echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
-        python_static_lib=`python ${{ env.install_dir }}/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
+        python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
         echo "components:" >> esmxBuild.yaml
         echo "  datm:" >> esmxBuild.yaml
         echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
+        echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
         echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
         echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
         echo "  docn:" >> esmxBuild.yaml
         echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ env.install_dir }}/cdeps/install" >> esmxBuild.yaml
+        echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
         echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
         echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
         echo "  geogate:" >> esmxBuild.yaml
         echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ env.install_dir }}/geogate/install" >> esmxBuild.yaml
+        echo "    install_prefix: ${{ github.workspace }}/app/geogate/install" >> esmxBuild.yaml
         echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
         echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
         echo "::group::Content of esmxBuild.yaml"
