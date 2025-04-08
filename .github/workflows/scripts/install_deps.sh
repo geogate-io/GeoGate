@@ -57,6 +57,7 @@ echo "::endgroup::"
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
+ls /home/runner/work/GeoGate/GeoGate/app/spack/var/spack/environments/test
 spack env status
 env_dir=`spack env status | awk -F: '{print $2}' | tr -d " "`
 spack -e $env_dir config add "concretizer:targets:granularity:generic"
