@@ -111,7 +111,7 @@ jobs:
           if [ -n "${{ inputs.spack }}" ]; then
             spack_ver="${{ inputs.spack }}"
           fi
-          config="\"lmod\":\"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${catalyst_ver}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${conduit_ver}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${paraview_ver}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${backend_type} ^libcatalyst@${catalyst_ver}%${compiler}@${compiler_ver}+fortran~ipo+python"
+          config="\"lmod\":\"esmf@${esmf_ver}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${catalyst_ver}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${conduit_ver}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${paraview_ver}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${backend_type} ^libcatalyst@${catalyst_ver}%${compiler}@${compiler_ver}+fortran~ipo+python\""
           echo "config=${config}" >> $GITHUB_OUTPUT 
           echo "compiler=${compiler}@${compiler_ver}" >> $GITHUB_OUTPUT
           echo "coupling_type=${coupling_type}" >> $GITHUB_OUTPUT
