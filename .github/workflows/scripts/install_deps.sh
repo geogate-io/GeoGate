@@ -57,10 +57,10 @@ echo "::endgroup::"
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
-spack -e . config add "concretizer:targets:granularity:generic"
-spack -e . config add "concretizer:targets:host_compatible:false"
-spack -e . config add "concretizer:unify:when_possible"
-spack -e . config add "packages:all:target:['x86_64']"
+spack -e $PWD/var/spack/environments/test config add "concretizer:targets:granularity:generic"
+spack -e $PWD/var/spack/environments/test config add "concretizer:targets:host_compatible:false"
+spack -e $PWD/var/spack/environments/test config add "concretizer:unify:when_possible"
+spack -e $PWD/var/spack/environments/test config add "packages:all:target:['x86_64']"
 IFS=':' read -r -a array <<< "${deps}"
 for d in "${array[@]}"
 do
