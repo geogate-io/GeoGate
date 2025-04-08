@@ -29,6 +29,12 @@ echo "Dependencies     : $deps"
 echo "Install Directory: $install_dir"
 echo "Spack Version    : $spack_ver"
 
+IFS=':' read -r -a array <<< "${deps}"
+for d in "${array[@]}"
+do
+  echo "  - $d target=x86_64 %${comp}" >> spack.yaml
+done
+
 exit
 
 # Go to installation directory
@@ -36,7 +42,7 @@ cd $install_dir
 
 # Checkout spack and setup to use it
 echo "::group::Checkout Spack"
-git clone -b $spack_ver https://github.com/spack/spack.git
+git clone -b ${spack_ver} https://github.com/spack/spack.git
 . spack/share/spack/setup-env.sh
 echo "::endgroup::"
 
@@ -56,8 +62,6 @@ cat ~/.spack/config.yaml
 echo "::endgroup::"
 
 # Create new spack environment
-
-
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
 spack env activate test
@@ -69,13 +73,18 @@ echo "      granularity: generic" >> ${spack_yaml}
 echo "      host_compatible: false" >> ${spack_yaml}
 echo "    unify: when_possible" >> ${spack_yaml}
 echo "  specs:" >> ${spack_yaml}
-#for d in "${array[@]}"
-#do
-#  echo "  - $d target=$arch %$comp" >> spack.yaml
-#done
+IFS=':' read -r -a array <<< "${deps}"
+for d in "${array[@]}"
+do
+  echo "  - $d target=$arch %$comp" >> spack.yaml
+done
 echo "  packages:" >> ${spack_yaml} 
 echo "    all:" >> ${spack_yaml}
 echo "      target: ['$arch']" >> ${spack_yaml}
+
+
+
+
 #echo "  view: $install_dir/view" >> spack.yaml
 #echo "  config:" >> spack.yaml
 #echo "    source_cache: $install_dir/source_cache" >> spack.yaml
