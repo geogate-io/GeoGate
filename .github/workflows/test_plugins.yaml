@@ -182,7 +182,7 @@ jobs:
 
     - name: Install CDEPS
       run: |
-        cd ${{ github.workspace }}/app/cdeps
+        cd ${{ github.workspace }}/app
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
         spack env activate test
@@ -191,7 +191,7 @@ jobs:
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        cd ${{ env.install_dir }}/cdeps
+        cd cdeps
         mkdir build
         cd build
         cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/cdeps/install \
