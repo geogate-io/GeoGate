@@ -186,10 +186,9 @@ jobs:
         . spack/share/spack/setup-env.sh
         . $(spack location -i lmod)/lmod/lmod/init/bash
         spack env activate test
-        ls /home/runner/.spack
+        cat /home/runner/.spack/packages.yaml
         module load esmf
         export COMPILER_MAJOR_VER=`echo ${{ needs.setup-run.outputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
-        echo $COMPILER_MAJOR_VER
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
