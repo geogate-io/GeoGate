@@ -18,8 +18,8 @@ module geogate_phases_python
   use NUOPC, only: NUOPC_CompAttributeGet
   use NUOPC_Model, only: NUOPC_ModelGet
 
-  use, intrinsic :: iso_c_binding, only : C_PTR
   use conduit
+  use, intrinsic :: iso_c_binding, only : C_PTR
 
   use geogate_share, only: ChkErr, StringSplit
   use geogate_types, only: IngestMeshData, meshType
