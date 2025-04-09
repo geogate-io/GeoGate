@@ -251,7 +251,7 @@ jobs:
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
         echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
-        echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
+        echo "  link_paths: $python_static_lib /usr/lib/gcc/x86_64-linux-gnu/$COMPILER_MAJOR_VER" >> esmxBuild.yaml
         #echo "  build_args: -DCMAKE_SHARED_LINKER_FLAGS=\"-L/usr/lib64 -lstdc++\"" >> esmxBuild.yaml
         #echo "  build_args: -DCMAKE_Fortran_FLAGS=-lstdc++" >> esmxBuild.yaml
         #echo "  cmake_build_args: -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_FLAGS=-lstdc++" >> esmxBuild.yaml
