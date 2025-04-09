@@ -240,12 +240,11 @@ jobs:
         module load esmf
         module load libcatalyst
         module load conduit
-        env | grep ESMF
-        env | grep esmf
         export COMPILER_MAJOR_VER=`echo ${{ needs.setup-run.outputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+        export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_INSTALL_PREFIX | awk -F= '{print $2"/lib"}'`
         python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
