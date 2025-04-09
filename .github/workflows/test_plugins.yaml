@@ -240,6 +240,8 @@ jobs:
         module load esmf
         module load libcatalyst
         module load conduit
+        find /usr/lib/gcc/x86_64-linux-gnu/14/. -name "*stdc++*"
+        find /usr/lib64/. -name "*stdc++*"
         export COMPILER_MAJOR_VER=`echo ${{ needs.setup-run.outputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
@@ -248,9 +250,9 @@ jobs:
         python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
-        echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+        echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
         echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
-        echo "  build_args: -DCMAKE_SHARED_LINKER_FLAGS=\"-L/usr/lib64 -lstdc++\"" >> esmxBuild.yaml
+        #echo "  build_args: -DCMAKE_SHARED_LINKER_FLAGS=\"-L/usr/lib64 -lstdc++\"" >> esmxBuild.yaml
         #echo "  build_args: -DCMAKE_Fortran_FLAGS=-lstdc++" >> esmxBuild.yaml
         #echo "  cmake_build_args: -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_FLAGS=-lstdc++" >> esmxBuild.yaml
         echo "components:" >> esmxBuild.yaml
