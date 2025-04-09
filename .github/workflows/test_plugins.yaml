@@ -196,7 +196,7 @@ jobs:
         cd cdeps
         mkdir build
         cd build
-        cmake -DCMAKE_INSTALL_PREFIX=${{ env.install_dir }}/cdeps/install \
+        cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/cdeps/install \
           -DPIO_C_LIBRARY=$parallelio_ROOT/lib \
           -DPIO_C_INCLUDE_DIR=$parallelio_ROOT/include \
           -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
