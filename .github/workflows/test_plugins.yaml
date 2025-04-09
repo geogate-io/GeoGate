@@ -244,28 +244,34 @@ jobs:
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+        python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
         echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
-        echo "  link_options: -lstdc++" >> esmxBuild.yaml
-        python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
+        echo "  cmake_build_args: DCMAKE_MODULE_LINKER_FLAGS=-lstdc++" >> esmxBuild.yaml
         echo "components:" >> esmxBuild.yaml
         echo "  datm:" >> esmxBuild.yaml
         echo "    build_type: none" >> esmxBuild.yaml
         echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
         echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
         echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
+        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+        echo "    link_libraries: esmf" >> esmxBuild.yaml
         echo "  docn:" >> esmxBuild.yaml
         echo "    build_type: none" >> esmxBuild.yaml
         echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
         echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
         echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
+        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+        echo "    link_libraries: esmf" >> esmxBuild.yaml
         echo "  geogate:" >> esmxBuild.yaml
         echo "    build_type: none" >> esmxBuild.yaml
         echo "    install_prefix: ${{ github.workspace }}/app/geogate/install" >> esmxBuild.yaml
         echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
         echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
+        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+        echo "    link_libraries: esmf" >> esmxBuild.yaml
         echo "::group::Content of esmxBuild.yaml"
         cat esmxBuild.yaml
         ESMX_Builder -v
