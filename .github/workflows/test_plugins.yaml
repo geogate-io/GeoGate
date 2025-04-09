@@ -202,7 +202,7 @@ jobs:
           -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
           -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
           -DDISABLE_FoX=ON ../
-        make
+        make VERBOSE=1
         make install
       shell: bash
 
@@ -227,7 +227,7 @@ jobs:
            -DGEOGATE_USE_CATALYST=ON \
            -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
            ../src/
-        make
+        make VERBOSE=1
         make install
       shell: bash
 
@@ -247,6 +247,7 @@ jobs:
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
         echo "  link_libraries: piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+        echo "  link_options: -lstdc++" >> esmxBuild.yaml
         python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "  link_paths: $python_static_lib" >> esmxBuild.yaml
         echo "components:" >> esmxBuild.yaml
@@ -267,8 +268,6 @@ jobs:
         echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
         echo "::group::Content of esmxBuild.yaml"
         cat esmxBuild.yaml
-        echo "::endgroup::"
-        echo "::group::Build Application"
         ESMX_Builder -v
         echo "::endgroup::"
       shell: bash
