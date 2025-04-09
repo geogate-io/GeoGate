@@ -244,7 +244,7 @@ jobs:
         export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
         export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
         export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_INSTALL_PREFIX | awk -F= '{print $2"/lib"}'`
+        export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_LIBSDIR | awk -F= '{print $2}'`
         python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
         echo "application:" > esmxBuild.yaml 
         echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
