@@ -80,6 +80,7 @@ jobs:
         run: |
           backend_type="${{ env.backend }}"
           echo "1 backend_type = $backend_type"
+          echo "1.1 backend_type = ${{ inputs.backend }}"
           if [ -n "${{ inputs.backend }}" ]; then
             backend_type="${{ inputs.backend }}"
             echo "2 backend_type = $backend_type"
