@@ -146,7 +146,7 @@ jobs:
           openmpi-bin openmpi-common libopenmpi-dev \
           curl libcurl4-openssl-dev tcl tcl-dev unzip \
           libosmesa6-dev \
-          libegl1-mesa libegl1-mesa-dev mesa-utils mesa-utils-extra
+          libegl1-mesa-dev mesa-utils mesa-utils-extra
       shell: bash
 
     - name: Checkout Component Repository
