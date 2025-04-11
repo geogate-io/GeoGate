@@ -166,6 +166,7 @@ jobs:
       if: steps.restore-cache.outputs.cache-hit != 'true'
       run: |
         ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
+          -b ${{ needs.setup-run.outputs.backend_type }} \
           -c ${{ needs.setup-run.outputs.compiler }} \
           -d ${{ needs.setup-run.outputs.config }} \
           -i ${{ github.workspace }}/app \
