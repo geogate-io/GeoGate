@@ -11,8 +11,8 @@ env:
   spack: prereleases/v1.0.0-alpha.4
 
 on:
-  push:
-    branches: [ main, feature/cicd ]
+  #push:
+  #  branches: [ main, feature/cicd ]
   #pull_request:
   #  types: [opened, synchronize, reopened, labeled, unlabeled]
   #  branches: [ main ]

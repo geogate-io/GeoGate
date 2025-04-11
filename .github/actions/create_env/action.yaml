@@ -1,0 +1,131 @@
+name: Create run environment
+author: Ufuk Turuncoglu
+description: Create run environment using Spack package manager
+inputs:
+  backend:
+    description: 'ParaView backend for headless mode'
+    required: false
+    type: choice
+    options:
+      - egl
+      - osmesa
+    default: 'osmesa'
+  catalyst:
+    description: 'Catalyst version'
+    required: false
+    type: string
+    default: 'master'
+  compiler:
+    description: 'Compiler type and version'
+    required: false
+    type: string
+    default: 'gcc@14.2.0'
+  conduit:
+    description: 'Conduit version'
+    required: false
+    type: string
+    default: 'develop'
+  esmf: 
+    description: 'ESMF version, branch or tag like 8.8.0, develop or =8.5.0b23'
+    required: false
+    type: string
+    default: 'develop'
+  paraview:
+    description: 'ParaView version'
+    required: false
+    type: string
+    default: 'master'
+  spack:
+    description: 'Spack version'
+    required: false
+    type: string
+    default: 'develop'
+outputs:
+  cache_name:
+    description: 'Name of the stored cache'
+    value: ${{ steps.set-env.outputs.CACHE_NAME }}
+  pkgs_list:
+    description: 'List of core packages installed using apt'
+    value: ${{ steps.install-core-pkgs.outputs.PKGS_LIST }}
+
+runs:
+  using: "composite"
+    steps:
+    - name: Install Core Development Tools
+      id: install-core-pkgs
+      run: |
+        PKGS_LIST="\
+          wget \
+          tar \
+          unzip \
+          file \
+          gringo \
+          llvm meson \
+          build-essential \
+          binutils-dev \
+          gfortran \
+          python3-dev \
+          python3-pip \
+          python3-yaml \
+          openmpi-bin \
+          openmpi-common \
+          libopenmpi-dev \
+          curl \
+          libcurl4-openssl-dev \
+          tcl \
+          tcl-dev \
+          unzip \
+          libosmesa6-dev \
+          libegl1-mesa-dev \
+          mesa-utils \
+          mesa-utils-extra"
+        echo "PKGS_LIST=$PKGS_LIST" >> $GITHUB_OUTPUT
+
+        sudo apt-get -qq update
+        sudo apt-get -qq install $PKGS_LIST
+      shell: bash
+
+    - name: Define Required Environment Variables
+      id: set-env
+      run: |
+        compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
+        compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
+        echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${{ inputs.conduit }}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
+        echo "CACHE_NAME=\"spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend_type }}\"" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Checkout Component Repository
+      uses: actions/checkout@v4
+      with:
+        path: ${{ github.workspace }}/app/geogate
+
+    - name: Restore Cached Dependencies
+      id: restore-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ${{ github.workspace }}/app/spack
+          /home/runner/.spack
+        key: ${{ steps.set-env.outputs.CACHE_NAME }}
+
+    - name: Create Spack Environment and Install Dependencies
+      id: spack-env
+      if: steps.restore-cache.outputs.cache-hit != 'true'
+      run: |
+        ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
+          -b ${{ inputs.backend }} \
+          -c ${{ inputs.compiler }} \
+          -d ${{ steps.set-env.outputs.SPACK_PKGS }} \
+          -i ${{ github.workspace }}/app \
+          -s ${{ inputs.spack }} \
+      shell: bash
+
+    - name: Save Dependencies to Cache
+      id: save-cache
+      if: steps.restore-cache.outputs.cache-hit != 'true' &&  steps.spack-env.outcome == 'success'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ${{ github.workspace }}/app/spack
+          /home/runner/.spack
+        key: ${{ steps.set-env.outputs.CACHE_NAME }}

@@ -48,8 +48,6 @@ echo "::endgroup::"
 echo "::group::Find Compilers and Externals"
 spack compiler find
 spack external find --exclude cmake
-#find /usr/. -name *egl*
-head -n 100 /usr/./include/EGL/egl.h
 if [ "$pv_backend" == "egl" ]; then
    echo "  egl:" >> /home/runner/.spack/packages.yaml
    echo "    buildable: False" >> /home/runner/.spack/packages.yaml
