@@ -20,18 +20,19 @@ jobs:
     steps:
     - name: Checkout Component Repository
       uses: actions/checkout@v4
-      #with:
-      #  path: ${{ github.workspace }}/app/geogate
+      with:
+        path: ${{ github.workspace }}/app/geogate
 
     - name: Create Run Environment
       id: create-env
-      uses: ./.github/actions/create_env
+      uses: ./app/geogate/.github/actions/create_env
       with:
         backend: ${{ env.backend }}
         catalyst: ${{ env.catalyst }}
         conduit: ${{ env.conduit }}
         compiler: ${{ env.compiler }}
         esmf: ${{ env.esmf }}
+        install_dir: ${{ github.workspace }}/app
         paraview: ${{ env.paraview }}
         spack: ${{ env.spack }}
 

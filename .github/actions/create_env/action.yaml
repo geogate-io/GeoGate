@@ -30,6 +30,10 @@ inputs:
     required: false
     type: string
     default: 'develop'
+  install_dir:
+    description: 'Spack dependency installation directory'
+    required: false
+    default: ~/.spack-ci
   paraview:
     description: 'ParaView version'
     required: false
@@ -116,7 +120,7 @@ runs:
         -b ${{ inputs.backend }} \
         -c ${{ inputs.compiler }} \
         -d ${{ steps.set-env.outputs.SPACK_PKGS }} \
-        -i ${{ github.workspace }}/app \
+        -i ${{ inputs.install_dir }} \
         -s ${{ inputs.spack }} \
     shell: bash
 
