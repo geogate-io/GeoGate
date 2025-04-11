@@ -20,8 +20,13 @@ if [[ -z "$comp" || ! -z `echo $comp | grep '^-'` ]]; then
   comp="gcc@12.3.0"
 fi
 
+if [ -z "$deps" ]; then
+  echo "Dependencies are not given! Exiting ..."
+  exit
+fi
+
 if [[ -z "$install_dir" || ! -z `echo $install_dir | grep '^-'` ]]; then
-  install_dir="$HOME/.spack-ci"
+  install_dir="."
 fi
 
 if [[ -z "$spack_ver" || ! -z `echo $spack_ver | grep '^-'` ]]; then
@@ -34,6 +39,8 @@ echo "Compiler Version  : $comp"
 echo "Dependencies      : $deps"
 echo "Install Directory : $install_dir"
 echo "Spack Version     : $spack_ver"
+
+exit
 
 # Go to installation directory
 cd $install_dir
