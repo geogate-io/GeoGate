@@ -49,7 +49,7 @@ outputs:
     value: ${{ steps.install-core-pkgs.outputs.PKGS_LIST }}
 
 runs:
-  using: "composite"
+  using: composite
     steps:
     - name: Install Core Development Tools
       id: install-core-pkgs
