@@ -1,6 +1,6 @@
 name: Create run environment
 author: Ufuk Turuncoglu
-description: Create run environment using Spack package manager
+description: 'Create run environment using Spack package manager'
 inputs:
   backend:
     description: 'ParaView backend for headless mode'
