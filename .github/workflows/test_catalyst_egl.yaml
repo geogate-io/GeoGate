@@ -23,21 +23,21 @@ jobs:
       with:
         path: ${{ github.workspace }}/app/geogate
 
-    #- name: Create Run Environment
-    #  id: create-env
-    #  uses: ${{ github.workspace }}/app/geogate/.github/actions/create_env
-    #  with:
-    #    backend: ${{ env.backend }}
-    #    catalyst: ${{ env.catalyst }}
-    #    conduit: ${{ env.conduit }}
-    #    compiler: ${{ env.compiler }}
-    #    esmf: ${{ env.esmf }}
-    #    paraview: ${{ env.paraview }}
-    #    spack: ${{ env.spack }}
+    - name: Create Run Environment
+      id: create-env
+      uses: /home/runner/work/GeoGate/GeoGate/app/geogate/.github/actions/create_env
+      with:
+        backend: ${{ env.backend }}
+        catalyst: ${{ env.catalyst }}
+        conduit: ${{ env.conduit }}
+        compiler: ${{ env.compiler }}
+        esmf: ${{ env.esmf }}
+        paraview: ${{ env.paraview }}
+        spack: ${{ env.spack }}
 
     - name: Test
       run: |
         echo ${{ github.workspace }}
-        #echo ${{ steps.create-env.outputs.cache_name }}
-        #echo ${{ steps.create-env.outputs.pkgs_list }}
+        echo ${{ steps.create-env.outputs.cache_name }}
+        echo ${{ steps.create-env.outputs.pkgs_list }}
       shell: bash
