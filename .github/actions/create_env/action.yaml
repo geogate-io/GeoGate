@@ -33,7 +33,8 @@ inputs:
   install_dir:
     description: 'Spack dependency installation directory'
     required: false
-    default: ~/.spack-ci
+    type: string
+    default: '~/.spack-ci'
   paraview:
     description: 'ParaView version'
     required: false
@@ -121,7 +122,7 @@ runs:
         -c ${{ inputs.compiler }} \
         -d ${{ steps.set-env.outputs.SPACK_PKGS }} \
         -i ${{ inputs.install_dir }} \
-        -s ${{ inputs.spack }} \
+        -s ${{ inputs.spack }}
     shell: bash
 
   - name: Save Dependencies to Cache
