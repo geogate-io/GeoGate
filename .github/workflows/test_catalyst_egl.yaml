@@ -11,7 +11,8 @@ env:
   spack: prereleases/v1.0.0-alpha.4
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ feature/cicd ]
 
 jobs:
   run-app:
