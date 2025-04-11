@@ -1,15 +1,20 @@
 #!/bin/bash
 
 # Command line arguments
-while getopts c:d:i:s: flag
+while getopts b:c:d:i:s: flag
 do
   case "${flag}" in
+    b) pv_backend=${OPTARG};;
     c) comp=${OPTARG};;
     d) deps=${OPTARG};;
     i) install_dir=${OPTARG};;
     s) spack_ver=${OPTARG};;
   esac
 done
+
+if [[ -z "$pv_backend" || ! -z `echo $pv_backend | grep '^-'` ]]; then
+  pv_backend="osmesa"
+fi
 
 if [[ -z "$comp" || ! -z `echo $comp | grep '^-'` ]]; then
   comp="gcc@12.3.0"
@@ -24,10 +29,11 @@ if [[ -z "$spack_ver" || ! -z `echo $spack_ver | grep '^-'` ]]; then
 fi
 
 # Print out arguments
-echo "Compiler Version : $comp"
-echo "Dependencies     : $deps"
-echo "Install Directory: $install_dir"
-echo "Spack Version    : $spack_ver"
+echo "PV Backend        : $pv_backend"
+echo "Compiler Version  : $comp"
+echo "Dependencies      : $deps"
+echo "Install Directory : $install_dir"
+echo "Spack Version     : $spack_ver"
 
 # Go to installation directory
 cd $install_dir
@@ -42,6 +48,14 @@ echo "::endgroup::"
 echo "::group::Find Compilers and Externals"
 spack compiler find
 spack external find --exclude cmake
+find /usr/. -name *egl*
+if [ "$pv_backend" == "egl" ]; then
+   echo"  egl:" >> /home/runner/.spack/packages.yaml
+   echo"    buildable: False" >> /home/runner/.spack/packages.yaml
+   echo"    externals:" >> /home/runner/.spack/packages.yaml
+   echo"    - spec: egl@1.5.0" >> /home/runner/.spack/packages.yaml
+   echo"      prefix: /usr" >> /home/runner/.spack/packages.yaml
+fi
 cat /home/runner/.spack/packages.yaml
 echo "::endgroup::"
 
