@@ -40,8 +40,6 @@ echo "Dependencies      : $deps"
 echo "Install Directory : $install_dir"
 echo "Spack Version     : $spack_ver"
 
-exit
-
 # Go to installation directory
 cd $install_dir
 
