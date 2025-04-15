@@ -4,11 +4,11 @@
 while getopts b:c:d:i:s: flag
 do
   case "${flag}" in
-    b) pv_backend="${OPTARG}";;
-    c) comp="${OPTARG}";;
-    d) deps="${OPTARG}";;
-    i) install_dir="${OPTARG}";;
-    s) spack_ver="${OPTARG}";;
+    b) pv_backend=${OPTARG};;
+    c) comp=${OPTARG};;
+    d) deps=${OPTARG};;
+    i) install_dir=${OPTARG};;
+    s) spack_ver=${OPTARG};;
   esac
 done
 

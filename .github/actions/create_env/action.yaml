@@ -118,11 +118,11 @@ runs:
     if: steps.restore-cache.outputs.cache-hit != 'true'
     run: |
       ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
-        -b ${{ inputs.backend }} \
-        -c ${{ inputs.compiler }} \
-        -d ${{ steps.set-env.outputs.SPACK_PKGS }} \
-        -i ${{ inputs.install_dir }} \
-        -s ${{ inputs.spack }}
+        -b "${{ inputs.backend }}" \
+        -c "${{ inputs.compiler }}" \
+        -d "${{ steps.set-env.outputs.SPACK_PKGS }}" \
+        -i "${{ inputs.install_dir }}" \
+        -s "${{ inputs.spack }}"
     shell: bash
 
   - name: Save Dependencies to Cache
