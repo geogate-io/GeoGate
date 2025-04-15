@@ -349,6 +349,21 @@ contains
           ! Create node for fields
           fields = catalyst_conduit_node_fetch(mesh, "fields")
 
+          ! Add lat-lon coordinates
+          if (convertToCart) then
+             call catalyst_conduit_node_set_path_char8_str(fields, "longitude/association", "vertex")
+             call catalyst_conduit_node_set_path_char8_str(fields, "longitude/topology", "mesh")
+             call catalyst_conduit_node_set_path_char8_str(fields, "longitude/volume_dependent", "false")
+             call catalyst_conduit_node_set_path_external_float64_ptr(fields, "longitude/values", &
+                myMesh%nodeCoordsLon, int8(myMesh%nodeCount))
+
+             call catalyst_conduit_node_set_path_char8_str(fields, "latitude/association", "vertex")
+             call catalyst_conduit_node_set_path_char8_str(fields, "latitude/topology", "mesh")
+             call catalyst_conduit_node_set_path_char8_str(fields, "latitude/volume_dependent", "false")
+             call catalyst_conduit_node_set_path_external_float64_ptr(fields, "latitude/values", &
+                myMesh%nodeCoordsLat, int8(myMesh%nodeCount))
+          end if
+
           ! Add mask information
           if (myMesh%elementMaskIsPresent) then
              call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
