@@ -36,9 +36,42 @@ jobs:
         paraview: ${{ env.paraview }}
         spack: ${{ env.spack }}
 
-    - name: Test
+#    - name: Test
+#      run: |
+#        echo ${{ github.workspace }}
+#        echo ${{ steps.create-env.outputs.cache_name }}
+#        echo ${{ steps.create-env.outputs.pkgs_list }}
+#      shell: bash
+
+    - name: Checkout CDEPS Data Components
+      uses: actions/checkout@v4
+      with:
+        repository: ESCOMP/CDEPS
+        path: ${{ github.workspace }}/app/cdeps
+        submodules: true
+
+    - name: Install CDEPS
       run: |
-        echo ${{ github.workspace }}
-        echo ${{ steps.create-env.outputs.cache_name }}
-        echo ${{ steps.create-env.outputs.pkgs_list }}
+        cd ${{ github.workspace }}/app
+        . spack/share/spack/setup-env.sh
+        . $(spack location -i lmod)/lmod/lmod/init/bash
+        spack env activate test
+        cat /home/runner/.spack/packages.yaml
+        module load esmf
+        export COMPILER_MAJOR_VER=`echo ${{ env.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
+        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+        cd cdeps
+        mkdir build
+        cd build
+        cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/cdeps/install \
+          -DPIO_C_LIBRARY=$parallelio_ROOT/lib \
+          -DPIO_C_INCLUDE_DIR=$parallelio_ROOT/include \
+          -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
+          -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
+          -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
+          -DDISABLE_FoX=ON ../
+        make VERBOSE=1
+        make install
       shell: bash
