@@ -140,7 +140,10 @@ jobs:
         ln -sf geogate/.github/workflows/config/datm.streams .
         ln -sf geogate/.github/workflows/config/docn_in .
         ln -sf geogate/.github/workflows/config/docn.streams .
-        cat geogate/.github/workflows/config/esmxRun.yaml | sed -e 's/__CATALYST_LOAD_PATH__/$paraview_ROOT\/lib64\/catalyst/' > esmxRun.yaml
+        ln -sf geogate/.github/workflows/config/pv_two_channel.py .
+        cat geogate/.github/workflows/config/esmxRun.yaml | 
+          sed -e 's/__CATALYST_LOAD_PATH__/$paraview_ROOT\/lib64\/catalyst/' |
+          sed -e 's/__CATALYST_SCRIPT__/pv_two_channel.py/' > esmxRun.yaml
         cat esmxRun.yaml
         ls $paraview_ROOT
         ls $paraview_ROOT/lib64

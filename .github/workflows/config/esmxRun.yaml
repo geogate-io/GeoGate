@@ -69,6 +69,6 @@ COP:
     Diagnostic: 0
     KeepFieldList: Sa_u10m:Sa_v10m:So_t
     CatalystConvertToCart: .true.
-    CatalystScripts: catalyst_grid_writer.py
+    CatalystScripts: __CATALYST_SCRIPT__
     CatalystLoadPath: __CATALYST_LOAD_PATH__
     <<: *anchor
