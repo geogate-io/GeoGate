@@ -75,3 +75,28 @@ jobs:
         make VERBOSE=1
         make install
       shell: bash
+
+    - name: Install GeoGate
+      run: |
+        cd ${{ github.workspace }}/app
+        . spack/share/spack/setup-env.sh
+        . $(spack location -i lmod)/lmod/lmod/init/bash
+        spack env activate test
+        module load esmf
+        module load libcatalyst
+        module load conduit
+        export COMPILER_MAJOR_VER=`echo ${{ env.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
+        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+        cd geogate
+        mkdir build
+        cd build
+        cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/geogate/install \
+           -DGEOGATE_USE_PYTHON=ON \
+           -DGEOGATE_USE_CATALYST=ON \
+           -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
+           ../src/
+        make VERBOSE=1
+        make install
+      shell: bash
