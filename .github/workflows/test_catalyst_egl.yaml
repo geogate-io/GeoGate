@@ -142,9 +142,10 @@ jobs:
         ln -sf geogate/.github/workflows/config/docn.streams .
         ln -sf geogate/.github/workflows/config/pv_two_channel.py .
         cat geogate/.github/workflows/config/esmxRun.yaml | 
-          sed -e 's/__CATALYST_LOAD_PATH__/$paraview_ROOT\/lib64\/catalyst/' |
-          sed -e 's/__CATALYST_SCRIPT__/pv_two_channel.py/' > esmxRun.yaml
+          sed -e "s/__CATALYST_LOAD_PATH__/$paraview_ROOT\/lib64\/catalyst/" |
+          sed -e "s/__CATALYST_SCRIPT__/pv_two_channel.py/" > esmxRun.yaml
         cat esmxRun.yaml
+        env | grep paraview
         ls $paraview_ROOT
         ls $paraview_ROOT/lib64
         ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
@@ -152,5 +153,7 @@ jobs:
         cd input
         ln -sf ../geogate/.github/workflows/data/*.nc .
         ls
-        mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 install/bin/esmx_app 
+        cd ..
+        ls
+        mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app 
       shell: bash
