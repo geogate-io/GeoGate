@@ -128,22 +128,26 @@ jobs:
 
     - name: Prepare Run Directory 
       run: |
-&datm_nml
-  datamode = "ERA5"
-  factorfn_data = "null"
-  factorfn_mesh = "null"
-  flds_co2 = .false.
-  flds_presaero = .false.
-  flds_wiso = .false.
-  iradsw = 1
-  model_maskfile = "input/mesh_atm.nc"
-  model_meshfile = "input/mesh_atm.nc"
-  nx_global = 1440
-  ny_global = 721
-  restfilm = "null"
-  export_all = .true.
-/
-
-
-
+        cd ${{ github.workspace }}/app
+        . spack/share/spack/setup-env.sh
+        . $(spack location -i lmod)/lmod/lmod/init/bash
+        spack env activate test
+        module load esmf
+        module load libcatalyst
+        module load conduit
+        module load paraview
+        ln -sf geogate/.github/workflows/config/datm_in .
+        ln -sf geogate/.github/workflows/config/datm.streams .
+        ln -sf geogate/.github/workflows/config/docn_in .
+        ln -sf geogate/.github/workflows/config/docn.streams .
+        cat geogate/.github/workflows/config/esmxRun.yaml | sed -e 's/__CATALYST_LOAD_PATH__/$paraview_ROOT\/lib64\/catalyst/' > esmxRun.yaml
+        cat esmxRun.yaml
+        ls $paraview_ROOT
+        ls $paraview_ROOT/lib64
+        ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
+        mkdir input
+        cd input
+        ln -sf ../geogate/.github/workflows/data/*.nc .
+        ls
+        mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 install/bin/esmx_app 
       shell: bash

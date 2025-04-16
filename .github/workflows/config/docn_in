@@ -1,0 +1,12 @@
+&docn_nml
+  datamode = "sstdata"
+  model_maskfile = "input/mesh_ocn.nc"
+  model_meshfile = "input/mesh_ocn.nc"
+  nx_global = 1440
+  ny_global = 721
+  restfilm = "null"
+  sst_constant_value = -1.0
+  skip_restart_read = true
+  import_data_fields = "none"
+  export_all = true
+/
