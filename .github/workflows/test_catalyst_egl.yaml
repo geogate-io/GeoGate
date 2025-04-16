@@ -142,8 +142,8 @@ jobs:
         ln -sf geogate/.github/workflows/config/docn.streams .
         ln -sf geogate/.github/workflows/config/pv_two_channel.py .
         cat geogate/.github/workflows/config/esmxRun.yaml | 
-          sed -e "s/__CATALYST_LOAD_PATH__/$ParaView_DIR\/lib\/catalyst/" |
-          sed -e "s/__CATALYST_SCRIPT__/pv_two_channel.py/" > esmxRun.yaml
+          sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst/#g" |
+          sed -e "s#__CATALYST_SCRIPT__#pv_two_channel.py#g" > esmxRun.yaml
         cat esmxRun.yaml
         ls $ParaView_DIR
         ls $ParaView_DIR/lib
