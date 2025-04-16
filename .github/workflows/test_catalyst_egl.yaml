@@ -125,3 +125,11 @@ jobs:
         ESMX_Builder -v
         echo "::endgroup::"
       shell: bash
+
+    - name: Prepare Run Directory 
+      run: |
+
+
+
+
+      shell: bash
