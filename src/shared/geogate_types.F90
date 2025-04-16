@@ -41,6 +41,8 @@ module geogate_types
     character(ESMF_MAXSTR) :: elementShape
     character(ESMF_MAXSTR), allocatable :: elementShapeMapName(:)
     integer, allocatable :: elementShapeMapValue(:)
+    real(ESMF_KIND_R8), allocatable :: nodeCoordsLon(:)
+    real(ESMF_KIND_R8), allocatable :: nodeCoordsLat(:)
     real(ESMF_KIND_R8), allocatable :: nodeCoordsX(:)
     real(ESMF_KIND_R8), allocatable :: nodeCoordsY(:)
     real(ESMF_KIND_R8), allocatable :: nodeCoordsZ(:)
@@ -102,6 +104,8 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! Allocate required variables
+    allocate(myMesh%nodeCoordsLon(myMesh%nodeCount))
+    allocate(myMesh%nodeCoordsLat(myMesh%nodeCount))
     allocate(myMesh%nodeCoordsX(myMesh%nodeCount))
     allocate(myMesh%nodeCoordsY(myMesh%nodeCount))
     allocate(myMesh%nodeCoordsZ(myMesh%nodeCount))
@@ -125,8 +129,8 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     do m = 1, myMesh%nodeCount
-       myMesh%nodeCoordsX(m) = nodeCoords(2*m-1)
-       myMesh%nodeCoordsY(m) = nodeCoords(2*m)
+       myMesh%nodeCoordsLon(m) = nodeCoords(2*m-1)
+       myMesh%nodeCoordsLat(m) = nodeCoords(2*m)
     end do
     deallocate(nodeCoords)
 
@@ -135,17 +139,17 @@ contains
        ! Calculate cartesian coordinates
        if (coordSys == ESMF_COORDSYS_SPH_DEG) then
           do m = 1, myMesh%nodeCount
-             if (myMesh%nodeCoordsY(m) == 90.0d0) then
+             if (myMesh%nodeCoordsLat(m) == 90.0d0) then
                 myMesh%nodeCoordsX(m) = 0.0d0
                 myMesh%nodeCoordsY(m) = 0.0d0
                 myMesh%nodeCoordsZ(m) = 1.0d0
-             else if (myMesh%nodeCoordsY(m) == -90.0d0) then
+             else if (myMesh%nodeCoordsLat(m) == -90.0d0) then
                 myMesh%nodeCoordsX(m) = 0.0d0
                 myMesh%nodeCoordsY(m) = 0.0d0
                 myMesh%nodeCoordsZ(m) = -1.0d0
              else
-                theta = myMesh%nodeCoordsX(m)*deg2Rad
-                phi = (90.0d0-myMesh%nodeCoordsY(m))*deg2Rad
+                theta = myMesh%nodeCoordsLon(m)*deg2Rad
+                phi = (90.0d0-myMesh%nodeCoordsLat(m))*deg2Rad
                 myMesh%nodeCoordsX(m) = cos(theta)*sin(phi)
                 myMesh%nodeCoordsY(m) = sin(theta)*sin(phi)
                 myMesh%nodeCoordsZ(m) = cos(phi)
@@ -153,14 +157,16 @@ contains
           end do
        else if (coordSys == ESMF_COORDSYS_SPH_RAD) then
           do m = 1, myMesh%nodeCount
-             theta = myMesh%nodeCoordsX(m)
-             phi = constHalfPi-myMesh%nodeCoordsY(m)
+             theta = myMesh%nodeCoordsLon(m)
+             phi = constHalfPi-myMesh%nodeCoordsLat(m)
              myMesh%nodeCoordsX(m) = cos(theta)*sin(phi)
              myMesh%nodeCoordsY(m) = sin(theta)*sin(phi)
              myMesh%nodeCoordsZ(m) = cos(phi)
           end do
        end if
     else
+       myMesh%nodeCoordsX(:) = myMesh%nodeCoordsLon(:)
+       myMesh%nodeCoordsY(:) = myMesh%nodeCoordsLat(:)
        myMesh%nodeCoordsZ(:) = 0.0d0
     end if
 
