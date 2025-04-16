@@ -153,7 +153,14 @@ jobs:
         ln -sf ../geogate/.github/workflows/data/*.nc .
         cd ..
         mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
-        ls
-        cat out_err.txt
-        cat PET*
       shell: bash
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      if: ${{ always() }}
+      with:
+        name: run
+        path: |
+          ${{ github.workspace }}/app/PET*
+          ${{ github.workspace }}/app/out_err.txt
+        retention-days: 2
