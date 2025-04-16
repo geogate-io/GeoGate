@@ -1,0 +1,51 @@
+name: Install CDEPS
+author: Ufuk Turuncoglu
+description: 'Install CDEPS data components'
+inputs:
+  compiler:
+    description: 'Compiler type and version'
+    required: true 
+    type: string
+  install_dir:
+    description: 'Installation directory'
+    required: true
+    type: string
+  spack_dir:
+    description: 'Directory of Spack installation'
+    required: true 
+    type: string
+
+runs:
+  using: composite
+  steps:
+  - name: Checkout CDEPS Data Components
+    uses: actions/checkout@v4
+    with:
+      repository: ESCOMP/CDEPS
+      path: ${{ inputs.install_dir }}/cdeps
+      submodules: true
+
+  - name: Install CDEPS
+    run: |
+      cd ${{ inputs.install_dir }}
+      . ${{ inputs.spack_dir }}/share/spack/setup-env.sh
+      . $(spack location -i lmod)/lmod/lmod/init/bash
+      spack env activate test
+      module load esmf
+      export COMPILER_MAJOR_VER=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
+      export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+      export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+      export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+      cd cdeps
+      mkdir build
+      cd build
+      cmake -DCMAKE_INSTALL_PREFIX=${{ inputs.install_dir }}/cdeps/install \
+        -DPIO_C_LIBRARY=$parallelio_ROOT/lib \
+        -DPIO_C_INCLUDE_DIR=$parallelio_ROOT/include \
+        -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
+        -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
+        -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
+        -DDISABLE_FoX=ON ../
+      make VERBOSE=1
+      make install
+    shell: bash
