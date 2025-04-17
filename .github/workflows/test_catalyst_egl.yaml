@@ -157,6 +157,9 @@ jobs:
         mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
       shell: bash
 
+    - name: Setup tmate session to allow ssh connection
+      uses: mxschmitt/action-tmate@v3
+
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       if: ${{ always() }}
