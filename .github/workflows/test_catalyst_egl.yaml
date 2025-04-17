@@ -150,6 +150,7 @@ jobs:
         mkdir input
         cd input
         ln -sf ../geogate/.github/workflows/data/*.nc .
+        ls
         cd ..
         mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
       shell: bash
