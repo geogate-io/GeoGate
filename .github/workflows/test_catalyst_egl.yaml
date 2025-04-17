@@ -68,7 +68,6 @@ jobs:
         mkdir build
         cd build
         cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/geogate/install \
-           
            -DGEOGATE_USE_PYTHON=ON \
            -DGEOGATE_USE_CATALYST=ON \
            -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
@@ -147,8 +146,6 @@ jobs:
           sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
           sed -e "s#__CATALYST_SCRIPT__#pv_two_channel.py#g" > esmxRun.yaml
         cat esmxRun.yaml
-        ls $ParaView_DIR
-        ls $ParaView_DIR/lib
         ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
         mkdir input
         cd input
