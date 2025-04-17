@@ -4,7 +4,7 @@ ESMX:
     logKindFlag: ESMF_LOGKIND_Multi
     logAppendFlag: false
     logFlush: true
-    fieldDictionary: fd_ufs.yaml
+    fieldDictionary: fd_cesm.yaml
     startTime: 2024-08-11T12:00:00
     stopTime: 2024-08-14T12:00:00
   Driver:
