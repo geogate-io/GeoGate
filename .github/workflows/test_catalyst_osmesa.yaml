@@ -1,4 +1,4 @@
-name: Test Catalyst Plugin with EGL
+name: Test Catalyst Plugin with OSMesa 
 
 env:
   backend: osmesa 
