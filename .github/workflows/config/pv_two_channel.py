@@ -353,6 +353,7 @@ from paraview import catalyst
 options = catalyst.Options()
 options.GlobalTrigger = 'Time Step'
 options.CatalystLiveTrigger = 'Time Step'
+options.ExtractsOutputDirectory = 'output'
 
 # ------------------------------------------------------------------------------
 if __name__ == '__main__':
