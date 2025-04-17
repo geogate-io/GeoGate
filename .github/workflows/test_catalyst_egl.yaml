@@ -9,6 +9,7 @@ env:
   esmf: 8.8.0
   paraview: 5.13.2
   spack: prereleases/v1.0.0-alpha.4
+  catalyst_script: pv_write.py 
 
 on:
   push:
@@ -144,7 +145,7 @@ jobs:
         wget https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
         cat geogate/.github/workflows/config/esmxRun.yaml | 
           sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
-          sed -e "s#__CATALYST_SCRIPT__#pv_two_channel.py#g" > esmxRun.yaml
+          sed -e "s#__CATALYST_SCRIPT__#${{ env.catalyst_script }}#g" > esmxRun.yaml
         cat esmxRun.yaml
         ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
         mkdir input
@@ -152,9 +153,11 @@ jobs:
         ln -sf ../geogate/.github/workflows/data/*.nc .
         ls
         cd ..
+        mkdir output
         export CATALYST_DEBUG=1
         ulimit -s unlimited
         mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
+        ls
       shell: bash
 
     - name: Setup tmate session to allow ssh connection
@@ -170,4 +173,5 @@ jobs:
           ${{ github.workspace }}/app/PET*
           ${{ github.workspace }}/app/out_err.txt
           ${{ github.workspace }}/app/*.log
+          ${{ github.workspace }}/app/output
         retention-days: 2

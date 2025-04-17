@@ -12,4 +12,4 @@ stream_vectors01:          null
 stream_mesh_file01:        "input/mesh_atm.nc"
 stream_lev_dimname01:      null
 stream_data_files01:       "input/era5_2024_Aug_11-14_u10v10_packed.nc"
-stream_data_variables01:   "u10 Sa_u10m" "v10 Sa_v10m"
+stream_data_variables01:   "u10 Sa_u10m" "v10 Sa_v10m" "u10 Sa_tdew"
