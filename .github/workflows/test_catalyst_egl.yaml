@@ -141,7 +141,7 @@ jobs:
         ln -sf geogate/.github/workflows/config/datm.streams .
         ln -sf geogate/.github/workflows/config/docn_in .
         ln -sf geogate/.github/workflows/config/docn.streams .
-        ln -sf geogate/.github/workflows/config/pv_two_channel.py .
+        ln -sf geogate/.github/workflows/config/*.py .
         wget https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
         cat geogate/.github/workflows/config/esmxRun.yaml | 
           sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
