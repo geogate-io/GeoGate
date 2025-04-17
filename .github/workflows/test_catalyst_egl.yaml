@@ -68,6 +68,7 @@ jobs:
         mkdir build
         cd build
         cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/geogate/install \
+           
            -DGEOGATE_USE_PYTHON=ON \
            -DGEOGATE_USE_CATALYST=ON \
            -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
@@ -164,4 +165,5 @@ jobs:
         path: |
           ${{ github.workspace }}/app/PET*
           ${{ github.workspace }}/app/out_err.txt
+          ${{ github.workspace }}/app/*.log
         retention-days: 2
