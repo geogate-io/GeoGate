@@ -80,10 +80,24 @@ runs:
         tcl \
         tcl-dev \
         unzip \
-        libosmesa6-dev \
-        libegl1-mesa-dev \
+        wayland-protocols \
+        libdrm-dev \
+        libegl-dev \
+        libwayland-dev \
+        libwayland-egl-backend-dev \
+        eglexternalplatform-dev \
+        meson \
         mesa-utils \
-        mesa-utils-extra"
+        libglu1-mesa-dev \
+        freeglut3-dev \
+        mesa-common-dev \
+        libglew-dev \
+        libglfw3-dev \
+        libglm-dev"
+        #libosmesa6-dev \
+        #libegl1-mesa-dev \
+        #mesa-utils \
+        #mesa-utils-extra"
       echo "PKGS_LIST=$PKGS_LIST" >> $GITHUB_OUTPUT
 
       sudo apt-get -qq update
@@ -96,7 +110,7 @@ runs:
       compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
       echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${{ inputs.conduit }}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
-      echo "CACHE_NAME=spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}" >> $GITHUB_OUTPUT
+      echo "CACHE_NAME=spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}_test" >> $GITHUB_OUTPUT
     shell: bash
 
   - name: Checkout Component Repository

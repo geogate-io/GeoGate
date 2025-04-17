@@ -45,13 +45,6 @@ jobs:
         install_dir: ${{ github.workspace }}/app
         spack_dir: ${{ github.workspace }}/app/spack
 
-#    - name: Test
-#      run: |
-#        echo ${{ github.workspace }}
-#        echo ${{ steps.create-env.outputs.cache_name }}
-#        echo ${{ steps.create-env.outputs.pkgs_list }}
-#      shell: bash
-
     - name: Install GeoGate
       run: |
         cd ${{ github.workspace }}/app
