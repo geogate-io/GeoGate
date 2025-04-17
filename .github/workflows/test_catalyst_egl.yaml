@@ -152,6 +152,8 @@ jobs:
         ln -sf ../geogate/.github/workflows/data/*.nc .
         ls
         cd ..
+        export CATALYST_DEBUG=1
+        ulimit -s unlimited
         mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
       shell: bash
 
