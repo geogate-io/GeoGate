@@ -9,7 +9,7 @@ env:
   esmf: 8.8.0
   paraview: 5.13.2
   spack: prereleases/v1.0.0-alpha.4
-  catalyst_script: pv_mb_atm.py #"pv_write.py:pv_two_channel.py" 
+  catalyst_script: pv_two_channel.py #"pv_write.py:pv_two_channel.py" 
 
 on:
   push:
