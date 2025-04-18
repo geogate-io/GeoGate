@@ -219,7 +219,7 @@ contains
     step = int((currTime-startTime)/timeStep)
     call catalyst_conduit_node_set_path_int32(node, "catalyst/state/timestep", step)
     call catalyst_conduit_node_set_path_float64(node, "catalyst/state/time", time)
-    call catalyst_conduit_node_set_path_int32(node, "catalyst/state/multiblock", 1)
+    !call catalyst_conduit_node_set_path_int32(node, "catalyst/state/multiblock", 1)
 
     ! Allocate myMesh
     if (.not. allocated(myMesh)) allocate(myMesh(is_local%wrap%numComp))

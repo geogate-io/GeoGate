@@ -101,8 +101,10 @@ glyph1.OrientationArray = ['POINTS', 'vector']
 glyph1.ScaleArray = ['POINTS', 'vector']
 glyph1.ScaleFactor = 0.006
 glyph1.GlyphTransform = 'Transform2'
-glyph1.GlyphMode = 'Uniform Spatial Distribution (Surface Sampling)'
-glyph1.MaximumNumberOfSamplePoints = 10000
+#glyph1.GlyphMode = 'Uniform Spatial Distribution (Surface Sampling)'
+#glyph1.MaximumNumberOfSamplePoints = 10000
+glyph1.GlyphMode = 'Uniform Spatial Distribution (Bounds Based)'
+glyph1.MaximumNumberOfSamplePoints = 5000
 glyph1.Stride = 16
 
 # init the 'Transform2' selected for 'GlyphTransform'
