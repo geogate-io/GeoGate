@@ -173,8 +173,8 @@ jobs:
         name: run
         path: |
           ${{ github.workspace }}/app/*.png
-          ${{ github.workspace }}/app/PET*
-          ${{ github.workspace }}/app/out_err.txt
-          ${{ github.workspace }}/app/*.log
-          ${{ github.workspace }}/app/output
+          #${{ github.workspace }}/app/PET*
+          #${{ github.workspace }}/app/out_err.txt
+          #${{ github.workspace }}/app/*.log
+          #${{ github.workspace }}/app/output
         retention-days: 2
