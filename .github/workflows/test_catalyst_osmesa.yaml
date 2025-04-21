@@ -150,7 +150,7 @@ jobs:
         wget https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_u10_fixed.nc
         wget https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_v10_fixed.nc
         wget https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_atm.nc
-        wget https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_atm.nc
+        wget https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_ocn.nc
         ls
         cd ..
         mkdir output
