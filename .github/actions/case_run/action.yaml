@@ -40,7 +40,7 @@ runs:
       export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
       export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
       export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_LIBSDIR | awk -F= '{print $2}'`
-      python_static_lib=`python ${{ inputs.geogate_dir }}/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`
+      python_static_lib=`python ${{ inputs.geogate_dir }}/../.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`
       echo $python_static_lib
       echo "::group::Create esmxBuild.yaml"
       echo "application:" > esmxBuild.yaml
