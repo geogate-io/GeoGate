@@ -13,7 +13,13 @@ env:
 
 on:
   push:
-    branches: [ feature/cicd ]
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * MON'
+    - cron: '0 0 * * FRI'
 
 jobs:
   run-app:
