@@ -1,0 +1,15 @@
+stream_info:               era5.01
+taxmode01:                 limit
+mapalgo01:                 redist
+tInterpAlgo01:             linear
+readMode01:                single
+dtlimit01:                 1.5
+stream_offset01:           0
+yearFirst01:               2024
+yearLast01:                2024
+yearAlign01:               2024
+stream_vectors01:          null
+stream_mesh_file01:        "input/mesh_ocn.nc"
+stream_lev_dimname01:      null
+stream_data_files01:       "input/era5_2024_Aug_11-14_sst_fixed.nc"
+stream_data_variables01:   "sst So_t"

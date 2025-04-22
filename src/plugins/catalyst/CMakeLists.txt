@@ -7,6 +7,7 @@ endif()
 
 add_library(geogate_catalyst ${SRCFILES})
 add_dependencies(geogate_catalyst geogate_shared)
+target_include_directories(geogate_catalyst PRIVATE ${ESMF_F90COMPILEPATHS})
 
 if(catalyst_FOUND)
   message(INFO " catalyst_DIR = ${catalyst_DIR}")

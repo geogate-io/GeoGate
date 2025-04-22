@@ -10,10 +10,13 @@ endif()
 
 add_library(geogate_python ${SRCFILES})
 add_dependencies(geogate_python geogate_shared)
+target_include_directories(geogate_python PRIVATE ${ESMF_F90COMPILEPATHS})
 
-target_include_directories(geogate_python PRIVATE ${CONDUIT_INCLUDE_DIRS})
-target_include_directories(geogate_python PRIVATE ${Python_INCLUDE_DIRS})
-target_include_directories(geogate_python PRIVATE ${CONDUIT_PYTHON_MODULE_DIR}/conduit)
+if(GEOGATE_USE_PYTHON)
+  target_include_directories(geogate_python PRIVATE ${CONDUIT_INCLUDE_DIRS})
+  target_include_directories(geogate_python PRIVATE ${Python_INCLUDE_DIRS})
+  target_include_directories(geogate_python PRIVATE ${CONDUIT_PYTHON_MODULE_DIR}/conduit)
+endif()
 
 install(TARGETS geogate_python
         EXPORT  geogate_python

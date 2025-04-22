@@ -1,0 +1,119 @@
+name: Install GeoGate 
+author: Ufuk Turuncoglu
+description: 'Install GeoGate co-processing component'
+inputs:
+  compiler:
+    description: 'Compiler type and version'
+    required: true 
+    type: string
+  install_dir:
+    description: 'Installation directory'
+    required: true
+    type: string
+  spack_dir:
+    description: 'Directory of Spack installation'
+    required: true 
+    type: string
+  geogate_dir:
+    description: 'Directory of GeoGate installation'
+    required: true
+    type: string
+  cdeps_dir:
+    description: 'Directory of CDEPS installation'
+    required: true 
+    type: string
+
+runs:
+  using: composite
+  steps:
+  - name: Create Executable with ESMX
+    run: |
+      cd ${{ inputs.install_dir }}
+      . ${{ inputs.spack_dir }}/share/spack/setup-env.sh
+      . $(spack location -i lmod)/lmod/lmod/init/bash
+      spack env activate test
+      module load esmf
+      module load libcatalyst
+      module load conduit
+      export COMPILER_MAJOR_VER=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
+      export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+      export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+      export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+      export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_LIBSDIR | awk -F= '{print $2}'`
+      python_static_lib=`python ${{ inputs.geogate_dir }}/../.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`
+      echo $python_static_lib
+      echo "::group::Create esmxBuild.yaml"
+      echo "application:" > esmxBuild.yaml
+      echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
+      echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+      echo "  link_paths: $python_static_lib /usr/lib/gcc/x86_64-linux-gnu/$COMPILER_MAJOR_VER" >> esmxBuild.yaml
+      echo "components:" >> esmxBuild.yaml
+      echo "  datm:" >> esmxBuild.yaml
+      echo "    build_type: none" >> esmxBuild.yaml
+      echo "    install_prefix: ${{ inputs.cdeps_dir }}" >> esmxBuild.yaml
+      echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
+      echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
+      echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+      echo "    link_libraries: esmf" >> esmxBuild.yaml
+      echo "  docn:" >> esmxBuild.yaml
+      echo "    build_type: none" >> esmxBuild.yaml
+      echo "    install_prefix: ${{ inputs.cdeps_dir }}" >> esmxBuild.yaml
+      echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
+      echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
+      echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+      echo "    link_libraries: esmf" >> esmxBuild.yaml
+      echo "  geogate:" >> esmxBuild.yaml
+      echo "    build_type: none" >> esmxBuild.yaml
+      echo "    install_prefix: ${{ inputs.geogate_dir }}" >> esmxBuild.yaml
+      echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
+      echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
+      echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+      echo "    link_libraries: esmf" >> esmxBuild.yaml
+      echo "::endgroup::"
+      echo "::group::Content of esmxBuild.yaml"
+      cat esmxBuild.yaml
+      ESMX_Builder -v
+      echo "::endgroup::"
+    shell: bash
+
+  - name: Prepare Run Directory 
+    run: |
+      cd ${{ inputs.install_dir }}
+      ln -sf geogate/.github/workflows/config/datm_in .
+      ln -sf geogate/.github/workflows/config/datm.streams .
+      ln -sf geogate/.github/workflows/config/docn_in .
+      ln -sf geogate/.github/workflows/config/docn.streams .
+      ln -sf geogate/.github/workflows/config/*.py .
+      ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
+      wget --no-verbose https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
+      mkdir input output
+      cd input
+      wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_sst_fixed.nc
+      wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_u10_fixed.nc
+      wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_v10_fixed.nc
+      wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_atm.nc
+      wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_ocn.nc
+    shell: bash
+
+  - name: Run Case 
+    run: |
+      cd ${{ inputs.install_dir }}
+      . ${{ inputs.spack_dir }}/share/spack/setup-env.sh
+      . $(spack location -i lmod)/lmod/lmod/init/bash
+      spack env activate test
+      module load esmf
+      module load libcatalyst
+      module load conduit
+      module load paraview
+      echo "::group::Update esmxRun.yaml"
+      cat ${{ inputs.install_dir }}/geogate/.github/workflows/config/esmxRun.yaml |
+        sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
+        sed -e "s#__CATALYST_SCRIPT__#${{ env.catalyst_script }}#g" > esmxRun.yaml
+      cat esmxRun.yaml
+      echo "::endgroup::"
+      echo "::group::Run simulation"
+      export CATALYST_DEBUG=1
+      ulimit -s unlimited
+      mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ${{ inputs.install_dir }}/install/bin/esmx_app 2>&1 | tee out_err.txt
+      echo "::endgroup::"
+    shell: bash

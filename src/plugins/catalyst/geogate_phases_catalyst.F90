@@ -196,7 +196,7 @@ contains
        ! Initialize catalyst
        err = c_catalyst_initialize(node)
        if (err /= catalyst_status_ok) then
-          write(message, fmt='(A,I)') trim(subname)//": Failed to initialize Catalyst: ", err
+          write(message, fmt='(A,I2)') trim(subname)//": Failed to initialize Catalyst: ", err
           call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
           rc = ESMF_FAILURE
           return
@@ -219,6 +219,7 @@ contains
     step = int((currTime-startTime)/timeStep)
     call catalyst_conduit_node_set_path_int32(node, "catalyst/state/timestep", step)
     call catalyst_conduit_node_set_path_float64(node, "catalyst/state/time", time)
+    !call catalyst_conduit_node_set_path_int32(node, "catalyst/state/multiblock", 1)
 
     ! Allocate myMesh
     if (.not. allocated(myMesh)) allocate(myMesh(is_local%wrap%numComp))
@@ -246,7 +247,7 @@ contains
     ! Execute catalyst
     err = c_catalyst_execute(node)
     if (err /= catalyst_status_ok) then
-       write(message, fmt='(A,I)') trim(subname)//": Failed to execute Catalyst: ", err
+       write(message, fmt='(A,I2)') trim(subname)//": Failed to execute Catalyst: ", err
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
        rc = ESMF_FAILURE
        return
