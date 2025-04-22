@@ -28,11 +28,6 @@ inputs:
 runs:
   using: composite
   steps:
-#  - name: Checkout Component Repository
-#    uses: actions/checkout@v4
-#    with:
-#      path: ${{ inputs.install_dir }}/geogate
-
   - name: Install GeoGate 
     run: |
       cd ${{ inputs.install_dir }}
