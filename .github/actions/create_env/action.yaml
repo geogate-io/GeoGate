@@ -110,7 +110,7 @@ runs:
       compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
       echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${{ inputs.conduit }}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
-      echo "CACHE_NAME=spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}_test" >> $GITHUB_OUTPUT
+      echo "CACHE_NAME=spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}" >> $GITHUB_OUTPUT
     shell: bash
 
   - name: Checkout Component Repository
