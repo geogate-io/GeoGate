@@ -11,9 +11,9 @@ env:
   spack: prereleases/v1.0.0-alpha.4
   catalyst_script: "pv_write.py:pv_two_channel.py"              
 
-on:
-  push:
-    branches: [ feature/cicd ]
+#on:
+#  push:
+#    branches: [ feature/cicd ]
 
 jobs:
   run-app:

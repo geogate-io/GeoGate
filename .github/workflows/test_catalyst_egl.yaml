@@ -19,10 +19,10 @@ jobs:
   run-app:
     runs-on: ubuntu-24.04
     steps:
-    - name: Checkout Component Repository
-      uses: actions/checkout@v4
-      with:
-        path: ${{ github.workspace }}/app/geogate
+#    - name: Checkout Component Repository
+#      uses: actions/checkout@v4
+#      with:
+#        path: ${{ github.workspace }}/app/geogate
 
     - name: Create Run Environment
       id: create-env
@@ -37,13 +37,23 @@ jobs:
         paraview: ${{ env.paraview }}
         spack: ${{ env.spack }}
 
-    - name: Install CDEPS
-      id: install-cdeps
-      uses: ./app/geogate/.github/actions/install_cdeps
+    - name: Install GeoGate
+      id: install-geogate
+      uses: ./app/geogate/.github/actions/install_geogate
       with:
         compiler: ${{ env.compiler }}
         install_dir: ${{ github.workspace }}/app
         spack_dir: ${{ github.workspace }}/app/spack
+        use_python: OFF
+        use_catalyst: ON
+
+#    - name: Install CDEPS
+#      id: install-cdeps
+#      uses: ./app/geogate/.github/actions/install_cdeps
+#      with:
+#        compiler: ${{ env.compiler }}
+#        install_dir: ${{ github.workspace }}/app
+#        spack_dir: ${{ github.workspace }}/app/spack
 
 #    - name: Test
 #      run: |
@@ -52,134 +62,134 @@ jobs:
 #        echo ${{ steps.create-env.outputs.pkgs_list }}
 #      shell: bash
 
-    - name: Install GeoGate
-      run: |
-        cd ${{ github.workspace }}/app
-        . spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack env activate test
-        module load esmf
-        module load libcatalyst
-        module load conduit
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
-        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
-        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
-        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        cd geogate
-        mkdir build
-        cd build
-        cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/geogate/install \
-           -DGEOGATE_USE_PYTHON=ON \
-           -DGEOGATE_USE_CATALYST=ON \
-           -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
-           ../src/
-        make VERBOSE=1
-        make install
-      shell: bash
+#    - name: Install GeoGate
+#      run: |
+#        cd ${{ github.workspace }}/app
+#        . spack/share/spack/setup-env.sh
+#        . $(spack location -i lmod)/lmod/lmod/init/bash
+#        spack env activate test
+#        module load esmf
+#        module load libcatalyst
+#        module load conduit
+#        export COMPILER_MAJOR_VER=`echo ${{ env.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
+#        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+#        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+#        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+#        cd geogate
+#        mkdir build
+#        cd build
+#        cmake -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/app/geogate/install \
+#           -DGEOGATE_USE_PYTHON=ON \
+#           -DGEOGATE_USE_CATALYST=ON \
+#           -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
+#           ../src/
+#        make VERBOSE=1
+#        make install
+#      shell: bash
 
-    - name: Create Executable with ESMX
-      run: |
-        cd ${{ github.workspace }}/app
-        . spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack env activate test
-        module load esmf
-        module load libcatalyst
-        module load conduit
-        export COMPILER_MAJOR_VER=`echo ${{ env.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
-        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
-        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
-        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
-        export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_LIBSDIR | awk -F= '{print $2}'`
-        python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
-        echo "application:" > esmxBuild.yaml
-        echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
-        echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
-        echo "  link_paths: $python_static_lib /usr/lib/gcc/x86_64-linux-gnu/$COMPILER_MAJOR_VER" >> esmxBuild.yaml
-        #echo "  build_args: -DCMAKE_SHARED_LINKER_FLAGS=\"-L/usr/lib64 -lstdc++\"" >> esmxBuild.yaml
-        #echo "  build_args: -DCMAKE_Fortran_FLAGS=-lstdc++" >> esmxBuild.yaml
-        #echo "  cmake_build_args: -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_FLAGS=-lstdc++" >> esmxBuild.yaml
-        echo "components:" >> esmxBuild.yaml
-        echo "  datm:" >> esmxBuild.yaml
-        echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
-        echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
-        echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
-        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
-        echo "    link_libraries: esmf" >> esmxBuild.yaml
-        echo "  docn:" >> esmxBuild.yaml
-        echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
-        echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
-        echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
-        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
-        echo "    link_libraries: esmf" >> esmxBuild.yaml
-        echo "  geogate:" >> esmxBuild.yaml
-        echo "    build_type: none" >> esmxBuild.yaml
-        echo "    install_prefix: ${{ github.workspace }}/app/geogate/install" >> esmxBuild.yaml
-        echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
-        echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
-        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
-        echo "    link_libraries: esmf" >> esmxBuild.yaml
-        echo "::group::Content of esmxBuild.yaml"
-        cat esmxBuild.yaml
-        ESMX_Builder -v
-        echo "::endgroup::"
-      shell: bash
-
-    - name: Prepare Run Directory 
-      run: |
-        cd ${{ github.workspace }}/app
-        . spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
-        spack env activate test
-        module load esmf
-        module load libcatalyst
-        module load conduit
-        module load paraview
-        #pvpython geogate/.github/workflows/config/pv_build_info.py
-        #pvpython geogate/.github/workflows/config/pv_test.py
-        ln -sf geogate/.github/workflows/config/datm_in .
-        ln -sf geogate/.github/workflows/config/datm.streams .
-        ln -sf geogate/.github/workflows/config/docn_in .
-        ln -sf geogate/.github/workflows/config/docn.streams .
-        ln -sf geogate/.github/workflows/config/*.py .
-        wget --no-verbose https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
-        cat geogate/.github/workflows/config/esmxRun.yaml | 
-          sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
-          sed -e "s#__CATALYST_SCRIPT__#${{ env.catalyst_script }}#g" > esmxRun.yaml
-        cat esmxRun.yaml
-        ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
-        mkdir input
-        cd input
-        #ln -sf ../geogate/.github/workflows/data/*.nc .
-        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_sst_fixed.nc
-        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_u10_fixed.nc
-        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_v10_fixed.nc
-        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_atm.nc
-        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_ocn.nc
-        ls
-        cd ..
-        mkdir output
-        export CATALYST_DEBUG=1
-        ulimit -s unlimited
-        mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
-        ls
-      shell: bash
-
-    #- name: Setup tmate session to allow ssh connection
-    #  uses: mxschmitt/action-tmate@v3
-    #  if: ${{ always() }}
-
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
-      if: ${{ always() }}
-      with:
-        name: run
-        path: |
-          ${{ github.workspace }}/app/*.png
-          ${{ github.workspace }}/app/PET*
-          ${{ github.workspace }}/app/out_err.txt
-          ${{ github.workspace }}/app/*.log
-          ${{ github.workspace }}/app/output
-        retention-days: 2
+#    - name: Create Executable with ESMX
+#      run: |
+#        cd ${{ github.workspace }}/app
+#        . spack/share/spack/setup-env.sh
+#        . $(spack location -i lmod)/lmod/lmod/init/bash
+#        spack env activate test
+#        module load esmf
+#        module load libcatalyst
+#        module load conduit
+#        export COMPILER_MAJOR_VER=`echo ${{ env.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
+#        export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
+#        export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
+#        export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
+#        export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_LIBSDIR | awk -F= '{print $2}'`
+#        python_static_lib=`python ${{ github.workspace }}/app/geogate/.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`  
+#        echo "application:" > esmxBuild.yaml
+#        echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
+#        echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+#        echo "  link_paths: $python_static_lib /usr/lib/gcc/x86_64-linux-gnu/$COMPILER_MAJOR_VER" >> esmxBuild.yaml
+#        #echo "  build_args: -DCMAKE_SHARED_LINKER_FLAGS=\"-L/usr/lib64 -lstdc++\"" >> esmxBuild.yaml
+#        #echo "  build_args: -DCMAKE_Fortran_FLAGS=-lstdc++" >> esmxBuild.yaml
+#        #echo "  cmake_build_args: -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_FLAGS=-lstdc++" >> esmxBuild.yaml
+#        echo "components:" >> esmxBuild.yaml
+#        echo "  datm:" >> esmxBuild.yaml
+#        echo "    build_type: none" >> esmxBuild.yaml
+#        echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
+#        echo "    libraries: datm dshr streams cdeps_share" >> esmxBuild.yaml
+#        echo "    fort_module: cdeps_datm_comp.mod" >> esmxBuild.yaml
+#        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+#        echo "    link_libraries: esmf" >> esmxBuild.yaml
+#        echo "  docn:" >> esmxBuild.yaml
+#        echo "    build_type: none" >> esmxBuild.yaml
+#        echo "    install_prefix: ${{ github.workspace }}/app/cdeps/install" >> esmxBuild.yaml
+#        echo "    libraries: docn dshr streams cdeps_share" >> esmxBuild.yaml
+#        echo "    fort_module: cdeps_docn_comp.mod" >> esmxBuild.yaml
+#        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+#        echo "    link_libraries: esmf" >> esmxBuild.yaml
+#        echo "  geogate:" >> esmxBuild.yaml
+#        echo "    build_type: none" >> esmxBuild.yaml
+#        echo "    install_prefix: ${{ github.workspace }}/app/geogate/install" >> esmxBuild.yaml
+#        echo "    libraries: geogate geogate_io geogate_python geogate_catalyst geogate_shared" >> esmxBuild.yaml
+#        echo "    fort_module: geogate_nuopc.mod" >> esmxBuild.yaml
+#        echo "    link_paths: $esmf_ROOT/lib" >> esmxBuild.yaml
+#        echo "    link_libraries: esmf" >> esmxBuild.yaml
+#        echo "::group::Content of esmxBuild.yaml"
+#        cat esmxBuild.yaml
+#        ESMX_Builder -v
+#        echo "::endgroup::"
+#      shell: bash
+#
+#    - name: Prepare Run Directory 
+#      run: |
+#        cd ${{ github.workspace }}/app
+#        . spack/share/spack/setup-env.sh
+#        . $(spack location -i lmod)/lmod/lmod/init/bash
+#        spack env activate test
+#        module load esmf
+#        module load libcatalyst
+#        module load conduit
+#        module load paraview
+#        #pvpython geogate/.github/workflows/config/pv_build_info.py
+#        #pvpython geogate/.github/workflows/config/pv_test.py
+#        ln -sf geogate/.github/workflows/config/datm_in .
+#        ln -sf geogate/.github/workflows/config/datm.streams .
+#        ln -sf geogate/.github/workflows/config/docn_in .
+#        ln -sf geogate/.github/workflows/config/docn.streams .
+#        ln -sf geogate/.github/workflows/config/*.py .
+#        wget --no-verbose https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
+#        cat geogate/.github/workflows/config/esmxRun.yaml | 
+#          sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
+#          sed -e "s#__CATALYST_SCRIPT__#${{ env.catalyst_script }}#g" > esmxRun.yaml
+#        cat esmxRun.yaml
+#        ln -sf geogate/.github/workflows/data/world_coastlines_and_lakes.vtp .
+#        mkdir input
+#        cd input
+#        #ln -sf ../geogate/.github/workflows/data/*.nc .
+#        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_sst_fixed.nc
+#        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_u10_fixed.nc
+#        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/era5_2024_Aug_11-14_v10_fixed.nc
+#        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_atm.nc
+#        wget --no-verbose https://github.com/uturuncoglu/GeoGate/raw/refs/heads/data/mesh_ocn.nc
+#        ls
+#        cd ..
+#        mkdir output
+#        export CATALYST_DEBUG=1
+#        ulimit -s unlimited
+#        mpirun --oversubscribe -np 6 --mca btl_tcp_if_include eth0 ./install/bin/esmx_app >& out_err.txt
+#        ls
+#      shell: bash
+#
+#    #- name: Setup tmate session to allow ssh connection
+#    #  uses: mxschmitt/action-tmate@v3
+#    #  if: ${{ always() }}
+#
+#    - name: Upload Artifacts
+#      uses: actions/upload-artifact@v4
+#      if: ${{ always() }}
+#      with:
+#        name: run
+#        path: |
+#          ${{ github.workspace }}/app/*.png
+#          ${{ github.workspace }}/app/PET*
+#          ${{ github.workspace }}/app/out_err.txt
+#          ${{ github.workspace }}/app/*.log
+#          ${{ github.workspace }}/app/output
+#        retention-days: 2
