@@ -3,9 +3,9 @@
 
 ![geogate](https://github.com/user-attachments/assets/f0a728b0-3626-4f51-873b-822069702402)
 
-**GeoGate: Bridging Earth System Model Components with Co-processing**
+**GeoGate: A Universal Co-processing Framework for Earth System Models**
 
-GeoGate is an open source project that provides a generic way to interact with the existing earth system models and applications coupled using ESMF/NUOPC library. It is used for defining one- or two-way data coupling and interactions through using its available plugins.
+GeoGate is an open source project that provides a generic way to interact with the existing ESMF/NUOPC based earth system models and applications. It can be used for defining one- or two-way data coupling and interactions through using its available plugins.
 
 Documentation
 =============
