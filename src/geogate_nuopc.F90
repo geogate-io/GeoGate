@@ -342,8 +342,10 @@ contains
           end do
        else
           ! Allocate temporary array for field list
-          allocate(fieldNamesToRemove(1))
-          fieldNamesToRemove(1) = trim(scalar_field_name)
+          if (trim(scalar_field_name) /= "") then
+             allocate(fieldNamesToRemove(1))
+             fieldNamesToRemove(1) = trim(scalar_field_name)
+          end if
        end if
     end if
 
@@ -422,14 +424,16 @@ contains
              end do
           end if
 
-          if (size(fieldNamesToRemove, dim=1) > 0) then
-             ! Print out field names that will be removed
-             do j = 1, size(fieldNamesToRemove, dim=1)
-                call ESMF_LogWrite(trim(subname)//': '//trim(fieldNamesToRemove(j))//' will be removed', ESMF_LOGMSG_INFO)
-             end do
-             ! Remove field/s from state
-             call ESMF_StateRemove(importNestedState, itemNameList=fieldNamesToRemove, relaxedFlag=.true., rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          if (allocated(fieldNamesToRemove)) then
+             if (size(fieldNamesToRemove, dim=1) > 0) then
+                ! Print out field names that will be removed
+                do j = 1, size(fieldNamesToRemove, dim=1)
+                   call ESMF_LogWrite(trim(subname)//': '//trim(fieldNamesToRemove(j))//' will be removed', ESMF_LOGMSG_INFO)
+                end do
+                ! Remove field/s from state
+                call ESMF_StateRemove(importNestedState, itemNameList=fieldNamesToRemove, relaxedFlag=.true., rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             end if
           end if
 
           ! Clean memory
