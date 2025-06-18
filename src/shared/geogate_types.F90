@@ -46,10 +46,15 @@ module geogate_types
     real(ESMF_KIND_R8), allocatable :: nodeCoordsX(:)
     real(ESMF_KIND_R8), allocatable :: nodeCoordsY(:)
     real(ESMF_KIND_R8), allocatable :: nodeCoordsZ(:)
+    real(ESMF_KIND_R8), allocatable :: elementCoordsLon(:)
+    real(ESMF_KIND_R8), allocatable :: elementCoordsLat(:)
+    real(ESMF_KIND_R8), allocatable :: elementCoordsX(:)
+    real(ESMF_KIND_R8), allocatable :: elementCoordsY(:)
     integer, allocatable :: elementTypes(:)
     integer, allocatable :: elementTypesShape(:)
     integer, allocatable :: elementTypesOffset(:)
     integer, allocatable :: elementConn(:)
+    integer, allocatable :: elementConn2d(:,:)
     logical :: elementMaskIsPresent
     integer, allocatable :: elementMask(:)
     logical :: nodeMaskIsPresent
@@ -85,6 +90,7 @@ contains
     logical :: hasQuad = .false.
     real(ESMF_KIND_R8) :: theta, phi
     real(ESMF_KIND_R8), allocatable :: nodeCoords(:)
+    real(ESMF_KIND_R8), allocatable :: elementCoords(:)
     type(ESMF_CoordSys_Flag) :: coordSys
     character(ESMF_MAXSTR) :: message
     character(len=*), parameter :: subname = trim(modName)//':(IngestMeshData) '
@@ -109,6 +115,11 @@ contains
     allocate(myMesh%nodeCoordsX(myMesh%nodeCount))
     allocate(myMesh%nodeCoordsY(myMesh%nodeCount))
     allocate(myMesh%nodeCoordsZ(myMesh%nodeCount))
+    allocate(myMesh%elementCoordsLon(myMesh%elementCount))
+    allocate(myMesh%elementCoordsLat(myMesh%elementCount))
+    allocate(myMesh%elementCoordsX(myMesh%elementCount))
+    allocate(myMesh%elementCoordsY(myMesh%elementCount))
+    allocate(myMesh%elementCoordsZ(myMesh%elementCount))
     allocate(myMesh%elementTypes(myMesh%elementCount))
     allocate(myMesh%elementTypesShape(myMesh%elementCount))
     allocate(myMesh%elementTypesOffset(myMesh%elementCount))
@@ -118,25 +129,44 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     myMesh%numElementConn = sum(myMesh%elementTypes, dim=1)
+    myMesh%maxNodePElement = max(myMesh%elementTypes, dim=1)
 
     ! Allocate element connection array
     allocate(myMesh%elementConn(myMesh%numElementConn))
+    allocate(myMesh%elementConn2d(myMesh%elementCount,myMesh%maxNodePElement))
 
     ! Get coordinates
     allocate(nodeCoords(myMesh%spatialDim*myMesh%nodeCount))
-    call ESMF_MeshGet(mesh, nodeCoords=nodeCoords, coordSys=coordSys, &
-       elementConn=myMesh%elementConn, rc=rc)
+    allocate(elementCoords(myMesh%spatialDim*myMesh%elementCount))
+
+    call ESMF_MeshGet(mesh, nodeCoords=nodeCoords, elementCoords=elementCoords, &
+       coordSys=coordSys, elementConn=myMesh%elementConn, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     do m = 1, myMesh%nodeCount
        myMesh%nodeCoordsLon(m) = nodeCoords(2*m-1)
        myMesh%nodeCoordsLat(m) = nodeCoords(2*m)
     end do
+    do m = 1, myMesh%elementCount
+       myMesh%elementCoordsLon(m) = elementCoords(2*m-1)
+       myMesh%elementCoordsLat(m) = elementCoords(2*m)
+    end do
+
     deallocate(nodeCoords)
+    deallocate(elementCoords)
+
+    ! Construct 2d element connection array
+    myMesh%elementConn2d(:,:) = 0
+    offset = 0
+    do m = 1, myMesh%elementCount
+       num_modes = myMesh%elementTypes(m)
+       myMesh%elementConn2d(m,:num_modes) = myMesh%elementConn(offset:offset+num_modes)
+       offset = offset+num_modes
+    end do
 
     ! Convert lat-lon to cartesian
     if (convertCartesian) then
-       ! Calculate cartesian coordinates
+       ! Calculate cartesian coordinates for nodes
        if (coordSys == ESMF_COORDSYS_SPH_DEG) then
           do m = 1, myMesh%nodeCount
              if (myMesh%nodeCoordsLat(m) == 90.0d0) then
@@ -164,10 +194,56 @@ contains
              myMesh%nodeCoordsZ(m) = cos(phi)
           end do
        end if
+
+       ! Calculate cartesian coordinates for elements 
+       if (coordSys == ESMF_COORDSYS_SPH_DEG) then
+          do m = 1, myMesh%elementCount
+             if (myMesh%elementCoordsLat(m) == 90.0d0) then
+                myMesh%elementCoordsX(m) = 0.0d0
+                myMesh%elementCoordsY(m) = 0.0d0
+                myMesh%elementCoordsZ(m) = 1.0d0
+             else if (myMesh%elementCoordsLat(m) == -90.0d0) then
+                myMesh%elementCoordsX(m) = 0.0d0
+                myMesh%elementCoordsY(m) = 0.0d0
+                myMesh%elementCoordsZ(m) = -1.0d0
+             else
+                theta = myMesh%elementCoordsLon(m)*deg2Rad
+                phi = (90.0d0-myMesh%elementCoordsLat(m))*deg2Rad
+                myMesh%elementCoordsX(m) = cos(theta)*sin(phi)
+                myMesh%elementCoordsY(m) = sin(theta)*sin(phi)
+                myMesh%elementCoordsZ(m) = cos(phi)
+             end if
+          end do
+       else if (coordSys == ESMF_COORDSYS_SPH_RAD) then
+          ! Calculate cartesian coordinates for nodes
+          do m = 1, myMesh%nodeCount
+             theta = myMesh%nodeCoordsLon(m)
+             phi = constHalfPi-myMesh%nodeCoordsLat(m)
+             myMesh%nodeCoordsX(m) = cos(theta)*sin(phi)
+             myMesh%nodeCoordsY(m) = sin(theta)*sin(phi)
+             myMesh%nodeCoordsZ(m) = cos(phi)
+          end do
+
+          ! Calculate cartesian coordinates for elements
+          do m = 1, myMesh%elementCount
+             theta = myMesh%elementCoordsLon(m)
+             phi = constHalfPi-myMesh%elementCoordsLat(m)
+             myMesh%elementCoordsX(m) = cos(theta)*sin(phi)
+             myMesh%elementCoordsY(m) = sin(theta)*sin(phi)
+             myMesh%elementCoordsZ(m) = cos(phi)
+          end do
+       end if
     else
+       ! No conversion to cartesian coordinates is requested
+       ! Simply copy latitude and longitude
+       ! Nodes
        myMesh%nodeCoordsX(:) = myMesh%nodeCoordsLon(:)
        myMesh%nodeCoordsY(:) = myMesh%nodeCoordsLat(:)
        myMesh%nodeCoordsZ(:) = 0.0d0
+       ! Elements
+       myMesh%elementCoordsX(:) = myMesh%elementCoordsLon(:)
+       myMesh%elementCoordsY(:) = myMesh%elementCoordsLat(:)
+       myMesh%elementCoordsZ(:) = 0.0d0
     end if
 
     ! Get mask information
