@@ -131,7 +131,7 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     myMesh%numElementConn = sum(myMesh%elementTypes, dim=1)
-    myMesh%maxNodePElement = max(myMesh%elementTypes, dim=1)
+    myMesh%maxNodePElement = maxval(myMesh%elementTypes, dim=1)
 
     ! Allocate element connection array
     allocate(myMesh%elementConn(myMesh%numElementConn))
