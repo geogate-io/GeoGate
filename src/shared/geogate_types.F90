@@ -38,6 +38,7 @@ module geogate_types
     integer :: nodeCount
     integer :: elementCount
     integer :: numElementConn
+    integer :: maxNodePElement
     character(ESMF_MAXSTR) :: elementShape
     character(ESMF_MAXSTR), allocatable :: elementShapeMapName(:)
     integer, allocatable :: elementShapeMapValue(:)
@@ -50,6 +51,7 @@ module geogate_types
     real(ESMF_KIND_R8), allocatable :: elementCoordsLat(:)
     real(ESMF_KIND_R8), allocatable :: elementCoordsX(:)
     real(ESMF_KIND_R8), allocatable :: elementCoordsY(:)
+    real(ESMF_KIND_R8), allocatable :: elementCoordsZ(:)
     integer, allocatable :: elementTypes(:)
     integer, allocatable :: elementTypesShape(:)
     integer, allocatable :: elementTypesOffset(:)
@@ -84,7 +86,7 @@ contains
     integer, intent(out), optional :: rc
 
     ! local variables
-    integer :: m
+    integer :: m, num_modes, offset
     logical :: convertCartesian
     logical :: hasTri = .false.
     logical :: hasQuad = .false.
