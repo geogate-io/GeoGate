@@ -56,7 +56,6 @@ module geogate_types
     integer, allocatable :: elementTypesShape(:)
     integer, allocatable :: elementTypesOffset(:)
     integer, allocatable :: elementConn(:)
-    integer, allocatable :: elementConn2d(:,:)
     logical :: elementMaskIsPresent
     integer, allocatable :: elementMask(:)
     logical :: nodeMaskIsPresent
@@ -86,7 +85,7 @@ contains
     integer, intent(out), optional :: rc
 
     ! local variables
-    integer :: m, num_modes, offset
+    integer :: m
     logical :: convertCartesian
     logical :: hasTri = .false.
     logical :: hasQuad = .false.
@@ -135,7 +134,6 @@ contains
 
     ! Allocate element connection array
     allocate(myMesh%elementConn(myMesh%numElementConn))
-    allocate(myMesh%elementConn2d(myMesh%elementCount,myMesh%maxNodePElement))
 
     ! Get coordinates
     allocate(nodeCoords(myMesh%spatialDim*myMesh%nodeCount))
@@ -156,15 +154,6 @@ contains
 
     deallocate(nodeCoords)
     deallocate(elementCoords)
-
-    ! Construct 2d element connection array
-    myMesh%elementConn2d(:,:) = 0
-    offset = 0
-    do m = 1, myMesh%elementCount
-       num_modes = myMesh%elementTypes(m)
-       myMesh%elementConn2d(m,:num_modes) = myMesh%elementConn(offset:offset+num_modes)
-       offset = offset+num_modes
-    end do
 
     ! Convert lat-lon to cartesian
     if (convertCartesian) then
