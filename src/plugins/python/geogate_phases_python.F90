@@ -12,6 +12,7 @@ module geogate_phases_python
   use ESMF, only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_INFO, ESMF_SUCCESS
   use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldWrite, ESMF_FieldWriteVTK
   use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleGet
+  use ESMF, only: ESMF_Info, ESMF_InfoGetFromHost
   use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMBarrier, ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_MAXSTR, ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
 
@@ -21,7 +22,7 @@ module geogate_phases_python
   use conduit
   use, intrinsic :: iso_c_binding, only : C_PTR
 
-  use geogate_share, only: ChkErr, StringSplit
+  use geogate_share, only: ChkErr, StringSplit, debugMode
   use geogate_types, only: IngestMeshData, meshType
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
@@ -60,6 +61,7 @@ contains
 
     ! local variables
     type(C_PTR) :: node
+    type(C_PTR) :: info
     integer :: n, mpiComm, localPet, petCount
     logical :: isPresent, isSet
     logical, save :: first_time = .true.
@@ -138,6 +140,19 @@ contains
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end do
 
+    ! Debug statements
+    if (debugMode) then
+       ! Save node information
+       write(message, fmt='(A,I3.3,A,I3.3)') "node_"//trim(timeStr)//"_", localPet, "_", petCount
+       call conduit_node_save(node, trim(message)//".json", "json")
+
+       ! Print node information with details about memory allocation
+       info = conduit_node_create()
+       call conduit_node_info(node, info)
+       call conduit_node_print(info)
+       call conduit_node_destroy(info)
+    end if
+
     ! Pass node to Python scripts
     do n = 1, size(scriptNames, dim=1)
        call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
@@ -171,6 +186,7 @@ contains
     real(ESMF_KIND_R8), pointer :: farrayPtr(:)
     type(ESMF_Mesh) :: fmesh
     type(ESMF_Field) :: field
+    type(ESMF_Info) :: info
     character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
     character(len=*), parameter :: subname = trim(modName)//':(FB2Node) '
     !---------------------------------------------------------------------------
@@ -196,6 +212,10 @@ contains
        call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
 
+       ! Query dimension information
+       call ESMF_InfoGetFromHost(field, info, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
        ! Query coordinate information from first field
        if (n == 1) then
           ! Create mesh node
@@ -211,48 +231,39 @@ contains
              if (chkerr(rc,__LINE__,u_FILE_u)) return
           end if
 
-          ! Set type of mesh, construct as an unstructured mesh
-          call conduit_node_set_path_char8_str(mesh, "coordsets/coords/type", "explicit")
+          ! Add dimension sizes
+          call conduit_node_set_path_int32(mesh, "dimension/n_node", myMesh%nodeCount)
+          call conduit_node_set_path_int32(mesh, "dimension/n_face", myMesh%elementCount)
+          call conduit_node_set_path_int32(mesh, "dimension/n_max_face_nodes", myMesh%maxNodePElement)
 
           ! Add coordinates
-          call conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/x", &
-             myMesh%nodeCoordsX, int8(myMesh%nodeCount))
-          call conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/y", &
-             myMesh%nodeCoordsY, int8(myMesh%nodeCount))
-          call conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/z", &
-             myMesh%nodeCoordsZ, int8(myMesh%nodeCount))
+          call conduit_node_set_path_external_float64_ptr(mesh, "coords/values/node_lon", &
+             myMesh%nodeCoordsLon, int8(myMesh%nodeCount))
+          call conduit_node_set_path_external_float64_ptr(mesh, "coords/values/node_lat", &
+             myMesh%nodeCoordsLat, int8(myMesh%nodeCount))
+          call conduit_node_set_path_external_float64_ptr(mesh, "coords/values/face_lon", &
+             myMesh%elementCoordsLon, int8(myMesh%elementCount))
+          call conduit_node_set_path_external_float64_ptr(mesh, "coords/values/face_lat", &
+             myMesh%elementCoordsLat, int8(myMesh%elementCount))
 
           ! Add topology
-          call conduit_node_set_path_char8_str(mesh, "topologies/mesh/type", "unstructured")
-          call conduit_node_set_path_char8_str(mesh, "topologies/mesh/coordset", "coords")
-          call conduit_node_set_path_char8_str(mesh, "topologies/mesh/elements/shape", trim(myMesh%elementShape))
-          do m = 1, size(myMesh%elementShapeMapName, dim=1)
-             call conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/"// &
-               trim(myMesh%elementShapeMapName(m)), myMesh%elementShapeMapValue(m))
-          end do
-          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/shapes", myMesh%elementTypesShape, int8(myMesh%elementCount))
-          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/sizes", myMesh%elementTypes, int8(myMesh%elementCount))
-          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/offsets", myMesh%elementTypesOffset, int8(myMesh%elementCount))
-          call conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/connectivity", myMesh%elementConn, int8(myMesh%numElementConn))
-
-          ! Create node for fields
-          fields = conduit_node_fetch(mesh, "fields")
+          call conduit_node_set_path_external_int32_ptr(mesh, "topologies/mesh/elements/n_nodes_per_face", &
+             myMesh%elementTypes, int8(myMesh%elementCount))
+          call conduit_node_set_path_external_int32_ptr(mesh, "topologies/mesh/elements/face_node_connectivity", &
+             myMesh%elementConn, int8(myMesh%numElementConn))
 
           ! Add mask information
           if (myMesh%elementMaskIsPresent) then
-             call conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
-             call conduit_node_set_path_char8_str(fields, "element_mask/topology", "mesh")
-             call conduit_node_set_path_char8_str(fields, "element_mask/volume_dependent", "false")
-             call conduit_node_set_path_external_int32_ptr(fields, "element_mask/values", &
+             call conduit_node_set_path_external_int32_ptr(mesh, "mask/values/face_mask", &
                 myMesh%elementMask, int8(myMesh%elementCount))
           end if
           if (myMesh%nodeMaskIsPresent) then
-             call conduit_node_set_path_char8_str(fields, "node_mask/association", "vertex")
-             call conduit_node_set_path_char8_str(fields, "node_mask/topology", "mesh")
-             call conduit_node_set_path_char8_str(fields, "node_mask/volume_dependent", "false")
-             call conduit_node_set_path_external_int32_ptr(fields, "node_mask/values", &
+             call conduit_node_set_path_external_int32_ptr(mesh, "mask/values/node_mask", &
                 myMesh%nodeMask, int8(myMesh%nodeCount))
           end if
+
+          ! Create node for fields
+          fields = conduit_node_fetch(mesh, "fields")
        end if
 
        ! Query field pointer
@@ -262,15 +273,12 @@ contains
        ! Add fields to node
        if (size(farrayPtr, dim=1) == myMesh%elementCount) then
           dataSize = myMesh%elementCount
-          call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "element")
+          call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "face")
        else
           dataSize = myMesh%nodeCount
-          call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "vertex")
+          call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "node")
        end if
-       call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/topology", "mesh")
-       call conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/volume_dependent", "false")
-       call conduit_node_set_path_external_float64_ptr(fields, &
-          trim(fieldNameList(n))//"/values", farrayPtr, int8(dataSize))
+       call conduit_node_set_path_external_float64_ptr(fields, trim(fieldNameList(n))//"/values", farrayPtr, int8(dataSize))
 
        ! Init pointers
        nullify(farrayPtr)

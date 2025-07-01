@@ -127,7 +127,7 @@ contains
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
        convertToCart = .false.
        if (isPresent .and. isSet) then
-          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true') convertToCart = .true.
+          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') convertToCart = .true.
        end if
        write(message, fmt='(A,L)') trim(subname)//' : CatalystConvertToCart = ', convertToCart
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
