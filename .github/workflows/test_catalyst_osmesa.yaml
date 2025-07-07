@@ -7,11 +7,12 @@ env:
   compiler: gcc@14.2.0
   coupling: spmd
   esmf: 8.8.0
-  paraview: 5.13.2
+  paraview: 5.13.1
   spack: prereleases/v1.0.0-alpha.4
   catalyst_script: "pv_write.py:pv_two_channel.py" 
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
   pull_request:
