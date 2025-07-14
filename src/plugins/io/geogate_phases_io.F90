@@ -102,6 +102,7 @@ contains
     integer :: n
     integer :: fieldCount
     type(ESMF_Field) :: field
+    character(len=ESMF_MAXSTR) :: msg
     character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
     character(len=*), parameter :: subname = trim(modName)//':(FBWrite) '
     !---------------------------------------------------------------------------
@@ -118,8 +119,14 @@ contains
     call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    write(msg, fmt='(A,I8)') subname//' number of fields in FB ', fieldCount
+    call ESMF_LogWrite(trim(msg), ESMF_LOGMSG_INFO)
+
     ! Loop over fields
     do n = 1, fieldCount
+       ! Debug information
+       call ESMF_LogWrite(subname//' writing '//trim(fieldNameList(n)), ESMF_LOGMSG_INFO)
+
        ! Query field
        call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
