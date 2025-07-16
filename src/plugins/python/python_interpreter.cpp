@@ -678,6 +678,8 @@ PythonInterpreter::check_error()
             }
         }
 
+        CONDUIT_INFO("Error when running script:\n" << m_error_msg);
+
         PyErr_Restore(py_etype, py_eval, py_etrace);
         PyErr_Clear();
     }
