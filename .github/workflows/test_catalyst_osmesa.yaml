@@ -12,6 +12,7 @@ env:
   catalyst_script: "pv_write.py:pv_two_channel.py" 
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
   pull_request:
