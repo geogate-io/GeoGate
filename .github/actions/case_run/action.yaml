@@ -85,7 +85,7 @@ runs:
       ln -sf geogate/.github/workflows/config/docn.streams .
       ln -sf geogate/.github/workflows/config/*.py .
       wget --no-verbose https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
-      wget --no-verbose https://github.com/${{ github.repository }}/raw/refs/heads/data/world_coastlines_and_lakes.vtp .
+      wget --no-verbose https://github.com/${{ github.repository }}/raw/refs/heads/data/world_coastlines_and_lakes.vtp
       mkdir input output
       cd input
       wget --no-verbose https://github.com/${{ github.repository }}/raw/refs/heads/data/era5_2024_Aug_11-14_sst_fixed.nc
