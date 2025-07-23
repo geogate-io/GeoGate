@@ -148,3 +148,11 @@ runs:
         ${{ github.workspace }}/app/spack
         /home/runner/.spack
       key: ${{ steps.set-env.outputs.CACHE_NAME }}
+
+  - name: Debug Outout
+    run: |
+      cd ${{ inputs.install_dir }}/spack
+      . spack/share/spack/setup-env.sh
+      cat spack/var/spack/environments/test/spack.yaml
+      spack --color always concretize --force --deprecated --reuse
+    shell: bash
