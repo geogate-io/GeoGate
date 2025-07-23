@@ -72,7 +72,7 @@ runs:
       echo "::endgroup::"
       echo "::group::Content of esmxBuild.yaml"
       cat esmxBuild.yaml
-      ESMX_Builder -v
+      ESMX_Builder --cmake-args="-DCMAKE_BUILD_TYPE=Debug" --verbose
       echo "::endgroup::"
     shell: bash
 

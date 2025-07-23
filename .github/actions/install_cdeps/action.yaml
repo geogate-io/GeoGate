@@ -45,7 +45,8 @@ runs:
         -DPIO_Fortran_LIBRARY=$parallelio_ROOT/lib \
         -DPIO_Fortran_INCLUDE_DIR=$parallelio_ROOT/include \
         -DCMAKE_Fortran_FLAGS="-DCPRGNU -ffree-form -ffree-line-length-none -fallow-argument-mismatch" \
-        -DDISABLE_FoX=ON ../
+        -DDISABLE_FoX=ON \
+        -DCMAKE_BUILD_TYPE=Debug ../
       make VERBOSE=1
       make install
     shell: bash
