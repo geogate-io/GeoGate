@@ -153,6 +153,7 @@ runs:
     run: |
       cd ${{ inputs.install_dir }}/spack
       . share/spack/setup-env.sh
+      spack env activate test
       cat var/spack/environments/test/spack.yaml
       spack --color always concretize --force --deprecated --reuse
     shell: bash
