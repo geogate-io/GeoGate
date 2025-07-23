@@ -96,9 +96,9 @@ glyph1.GlyphMode = 'Uniform Spatial Distribution (Surface Sampling)'
 glyph1.Stride = 16
 
 # create a new 'XML PolyData Reader'
-world_coastlines_and_lakesvtp = XMLPolyDataReader(registrationName='world_coastlines_and_lakes.vtp', FileName=['world_coastlines_and_lakes.vtp'])
-world_coastlines_and_lakesvtp.CellArrayStatus = ['plates']
-world_coastlines_and_lakesvtp.TimeArray = 'None'
+#world_coastlines_and_lakesvtp = XMLPolyDataReader(registrationName='world_coastlines_and_lakes.vtp', FileName=['world_coastlines_and_lakes.vtp'])
+#world_coastlines_and_lakesvtp.CellArrayStatus = ['plates']
+#world_coastlines_and_lakesvtp.TimeArray = 'None'
 
 # ----------------------------------------------------------------
 # setup the visualization in view 'renderView1'
@@ -252,38 +252,38 @@ threshold1Display.ScaleTransferFunction.Points = [-90.125, 0.0, 0.5, 0.0, 90.125
 threshold1Display.OpacityTransferFunction.Points = [-90.125, 0.0, 0.5, 0.0, 90.125, 1.0, 0.5, 0.0]
 
 # show data from world_coastlines_and_lakesvtp
-world_coastlines_and_lakesvtpDisplay = Show(world_coastlines_and_lakesvtp, renderView1, 'GeometryRepresentation')
+#world_coastlines_and_lakesvtpDisplay = Show(world_coastlines_and_lakesvtp, renderView1, 'GeometryRepresentation')
 
 # trace defaults for the display properties.
-world_coastlines_and_lakesvtpDisplay.Representation = 'Surface'
-world_coastlines_and_lakesvtpDisplay.AmbientColor = [0.0, 0.0, 0.0]
-world_coastlines_and_lakesvtpDisplay.ColorArrayName = ['POINTS', '']
-world_coastlines_and_lakesvtpDisplay.DiffuseColor = [0.0, 0.0, 0.0]
-world_coastlines_and_lakesvtpDisplay.LineWidth = 1.5
-world_coastlines_and_lakesvtpDisplay.SelectNormalArray = 'None'
-world_coastlines_and_lakesvtpDisplay.SelectTangentArray = 'None'
-world_coastlines_and_lakesvtpDisplay.SelectTCoordArray = 'None'
-world_coastlines_and_lakesvtpDisplay.TextureTransform = 'Transform2'
-world_coastlines_and_lakesvtpDisplay.OSPRayScaleFunction = 'Piecewise Function'
-world_coastlines_and_lakesvtpDisplay.Assembly = ''
-world_coastlines_and_lakesvtpDisplay.SelectedBlockSelectors = ['']
-world_coastlines_and_lakesvtpDisplay.SelectOrientationVectors = 'None'
-world_coastlines_and_lakesvtpDisplay.ScaleFactor = 0.19942809939384462
-world_coastlines_and_lakesvtpDisplay.SelectScaleArray = 'plates'
-world_coastlines_and_lakesvtpDisplay.GlyphType = 'Arrow'
-world_coastlines_and_lakesvtpDisplay.GlyphTableIndexArray = 'plates'
-world_coastlines_and_lakesvtpDisplay.GaussianRadius = 0.00997140496969223
-world_coastlines_and_lakesvtpDisplay.SetScaleArray = [None, '']
-world_coastlines_and_lakesvtpDisplay.ScaleTransferFunction = 'Piecewise Function'
-world_coastlines_and_lakesvtpDisplay.OpacityArray = [None, '']
-world_coastlines_and_lakesvtpDisplay.OpacityTransferFunction = 'Piecewise Function'
-world_coastlines_and_lakesvtpDisplay.DataAxesGrid = 'Grid Axes Representation'
-world_coastlines_and_lakesvtpDisplay.PolarAxes = 'Polar Axes Representation'
-world_coastlines_and_lakesvtpDisplay.SelectInputVectors = [None, '']
-world_coastlines_and_lakesvtpDisplay.WriteLog = ''
+#world_coastlines_and_lakesvtpDisplay.Representation = 'Surface'
+#world_coastlines_and_lakesvtpDisplay.AmbientColor = [0.0, 0.0, 0.0]
+#world_coastlines_and_lakesvtpDisplay.ColorArrayName = ['POINTS', '']
+#world_coastlines_and_lakesvtpDisplay.DiffuseColor = [0.0, 0.0, 0.0]
+#world_coastlines_and_lakesvtpDisplay.LineWidth = 1.5
+#world_coastlines_and_lakesvtpDisplay.SelectNormalArray = 'None'
+#world_coastlines_and_lakesvtpDisplay.SelectTangentArray = 'None'
+#world_coastlines_and_lakesvtpDisplay.SelectTCoordArray = 'None'
+#world_coastlines_and_lakesvtpDisplay.TextureTransform = 'Transform2'
+#world_coastlines_and_lakesvtpDisplay.OSPRayScaleFunction = 'Piecewise Function'
+#world_coastlines_and_lakesvtpDisplay.Assembly = ''
+#world_coastlines_and_lakesvtpDisplay.SelectedBlockSelectors = ['']
+#world_coastlines_and_lakesvtpDisplay.SelectOrientationVectors = 'None'
+#world_coastlines_and_lakesvtpDisplay.ScaleFactor = 0.19942809939384462
+#world_coastlines_and_lakesvtpDisplay.SelectScaleArray = 'plates'
+#world_coastlines_and_lakesvtpDisplay.GlyphType = 'Arrow'
+#world_coastlines_and_lakesvtpDisplay.GlyphTableIndexArray = 'plates'
+#world_coastlines_and_lakesvtpDisplay.GaussianRadius = 0.00997140496969223
+#world_coastlines_and_lakesvtpDisplay.SetScaleArray = [None, '']
+#world_coastlines_and_lakesvtpDisplay.ScaleTransferFunction = 'Piecewise Function'
+#world_coastlines_and_lakesvtpDisplay.OpacityArray = [None, '']
+#world_coastlines_and_lakesvtpDisplay.OpacityTransferFunction = 'Piecewise Function'
+#world_coastlines_and_lakesvtpDisplay.DataAxesGrid = 'Grid Axes Representation'
+#world_coastlines_and_lakesvtpDisplay.PolarAxes = 'Polar Axes Representation'
+#world_coastlines_and_lakesvtpDisplay.SelectInputVectors = [None, '']
+#world_coastlines_and_lakesvtpDisplay.WriteLog = ''
 
 # init the 'Piecewise Function' selected for 'OSPRayScaleFunction'
-world_coastlines_and_lakesvtpDisplay.OSPRayScaleFunction.Points = [-49.2702, 0.0, 0.5, 0.0, 52.2462, 1.0, 0.5, 0.0]
+#world_coastlines_and_lakesvtpDisplay.OSPRayScaleFunction.Points = [-49.2702, 0.0, 0.5, 0.0, 52.2462, 1.0, 0.5, 0.0]
 
 # show data from annotateTime1
 annotateTime1Display = Show(annotateTime1, renderView1, 'TextSourceRepresentation')
