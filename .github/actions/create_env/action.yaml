@@ -152,7 +152,7 @@ runs:
   - name: Debug Outout
     run: |
       cd ${{ inputs.install_dir }}/spack
-      . spack/share/spack/setup-env.sh
-      cat spack/var/spack/environments/test/spack.yaml
+      . share/spack/setup-env.sh
+      cat var/spack/environments/test/spack.yaml
       spack --color always concretize --force --deprecated --reuse
     shell: bash
