@@ -1,7 +1,7 @@
 | Plugin            | Result  |
 | ----------------- | ------- |
-| ParaView/Catalyst | [![Test Catalyst Plugin with EGL](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml/badge.svg)](https://github.com/uturuncoglu/GeoGate/actions/workflows/test_catalyst_egl.yaml)    |
-| ParaView/Catalyst | [![Test Catalyst Plugin with OSMesa](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml/badge.svg)](https://github.com/uturuncoglu/GeoGate/actions/workflows/test_catalyst_osmesa.yaml) |
+| ParaView/Catalyst | [![Test Catalyst Plugin with EGL](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml/badge.svg)](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml)    |
+| ParaView/Catalyst | [![Test Catalyst Plugin with OSMesa](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml/badge.svg)](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml) |
 
 ![geogate](https://github.com/user-attachments/assets/f0a728b0-3626-4f51-873b-822069702402)
 
