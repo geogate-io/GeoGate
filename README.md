@@ -19,9 +19,9 @@ https://geogate.readthedocs.io/en/latest/
 Source Repo
 ===========
 
-GeoGate's source is hosted on GitHub:
+GeoGate's source is hosted on GeoGate IO GitHub organization:
 
-https://github.com/uturuncoglu/GeoGate
+https://github.com/geogate-io/GeoGate
 
 License
 =======
