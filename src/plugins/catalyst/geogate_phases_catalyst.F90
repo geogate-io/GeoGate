@@ -275,134 +275,205 @@ contains
     type(C_PTR) :: channel
     type(C_PTR) :: mesh
     type(C_PTR) :: fields
-    integer :: n, m
+    integer :: n, m, lrank, im, jm
     integer :: fieldCount, dataSize
+    logical, save :: has2dMesh = .false.
+    logical, save :: has3dMesh = .false.
     type(ESMF_Mesh) :: fmesh
     type(ESMF_Field) :: field
     real(ESMF_KIND_R8), pointer :: farrayPtr(:)
+    real(ESMF_KIND_R8), pointer :: farrayPtr2(:,:)
     character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
+    character(ESMF_MAXSTR), allocatable :: channelName
     character(len=*), parameter :: subname = trim(modName)//':(FB2Channel) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
 
-    ! Add channel
-    channel = catalyst_conduit_node_fetch(node, "catalyst/channels/"//trim(compName))
-
-    ! Query number of item in the FB
-    call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    allocate(fieldNameList(fieldCount))
-
-    call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
     ! Loop over fields
     do n = 1, fieldCount
-       ! Query field
+       ! Query FB to extract field
        call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-       ! Query coordinate information from first field
-       if (n == 1) then
-          ! Add mesh to channel
-          call catalyst_conduit_node_set_path_char8_str(channel, "type", "mesh")
-
-          ! Create mesh node
-          mesh = catalyst_conduit_node_fetch(channel, "data")
-
-          ! Set type of mesh, construct as an unstructured mesh
-          call catalyst_conduit_node_set_path_char8_str(mesh, "coordsets/coords/type", "explicit")
-
-          if (.not. allocated(myMesh%nodeCoordsX)) then
-             ! Query mesh
-             call ESMF_FieldGet(field, mesh=fmesh, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-
-             ! Ingest ESMF mesh
-             call IngestMeshData(fmesh, myMesh, trim(compName), cartesian=convertToCart, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-          end if
-
-          ! Add coordinates
-          call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/x", &
-             myMesh%nodeCoordsX, int8(myMesh%nodeCount))
-          call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/y", &
-             myMesh%nodeCoordsY, int8(myMesh%nodeCount))
-          call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/z", &
-             myMesh%nodeCoordsZ, int8(myMesh%nodeCount))
-
-          ! Add topology
-          call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/type", "unstructured")
-          call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/coordset", "coords")
-          call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/elements/shape", trim(myMesh%elementShape))
-          do m = 1, size(myMesh%elementShapeMapName, dim=1)
-             call catalyst_conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/"// &
-               trim(myMesh%elementShapeMapName(m)), myMesh%elementShapeMapValue(m))
-          end do
-          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/shapes", myMesh%elementTypesShape, int8(myMesh%elementCount))
-          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/sizes", myMesh%elementTypes, int8(myMesh%elementCount))
-          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/offsets", myMesh%elementTypesOffset, int8(myMesh%elementCount))
-          call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/connectivity", myMesh%elementConn, int8(myMesh%numElementConn))
-
-          ! Create node for fields
-          fields = catalyst_conduit_node_fetch(mesh, "fields")
-
-          ! Add lat-lon coordinates
-          if (convertToCart) then
-             call catalyst_conduit_node_set_path_char8_str(fields, "longitude/association", "vertex")
-             call catalyst_conduit_node_set_path_char8_str(fields, "longitude/topology", "mesh")
-             call catalyst_conduit_node_set_path_char8_str(fields, "longitude/volume_dependent", "false")
-             call catalyst_conduit_node_set_path_external_float64_ptr(fields, "longitude/values", &
-                myMesh%nodeCoordsLon, int8(myMesh%nodeCount))
-
-             call catalyst_conduit_node_set_path_char8_str(fields, "latitude/association", "vertex")
-             call catalyst_conduit_node_set_path_char8_str(fields, "latitude/topology", "mesh")
-             call catalyst_conduit_node_set_path_char8_str(fields, "latitude/volume_dependent", "false")
-             call catalyst_conduit_node_set_path_external_float64_ptr(fields, "latitude/values", &
-                myMesh%nodeCoordsLat, int8(myMesh%nodeCount))
-          end if
-
-          ! Add mask information
-          if (myMesh%elementMaskIsPresent) then
-             call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
-             call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/topology", "mesh")
-             call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/volume_dependent", "false")
-             call catalyst_conduit_node_set_path_external_int32_ptr(fields, "element_mask/values", &
-                myMesh%elementMask, int8(myMesh%elementCount))
-          end if
-          if (myMesh%nodeMaskIsPresent) then
-             call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/association", "vertex")
-             call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/topology", "mesh")
-             call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/volume_dependent", "false")
-             call catalyst_conduit_node_set_path_external_int32_ptr(fields, "node_mask/values", &
-                myMesh%nodeMask, int8(myMesh%nodeCount))
-          end if
-       end if ! n == 1
-
-       ! Query field pointer
-       call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
+       ! Query field
+       call ESMF_FieldGet(field, rank=lrank, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Add fields to node
-       if (size(farrayPtr, dim=1) == myMesh%elementCount) then
-          dataSize = myMesh%elementCount
-          call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "element")
+       ! Add channel
+       write(channelName, fmt="(A,I1,A)") trim(compName), lrank+1, "d"
+       if (.not. catalyst_conduit_node_has_path(node, "catalyst/channels/"//trim(channelName))) then
+           channel = catalyst_conduit_node_fetch(node, "catalyst/channels/"//trim(compName))
        else
-          dataSize = myMesh%nodeCount
-          call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "vertex")
+           channel = catalyst_conduit_node_fetch_existing(node, "catalyst/channels/"//trim(compName))
        end if
 
-       call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/topology", "mesh")
-       call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/volume_dependent", "false")
-       call catalyst_conduit_node_set_path_external_float64_ptr(fields, &
-          trim(fieldNameList(n))//"/values", farrayPtr, int8(dataSize))
-
-       ! Init pointers
-       nullify(farrayPtr)
     end do ! fieldCount
+
+    call catalyst_conduit_node_print(node)
+
+    !! Add channel
+    !channel = catalyst_conduit_node_fetch(node, "catalyst/channels/"//trim(compName))
+
+    !! Query number of item in the FB
+    !call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
+    !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !allocate(fieldNameList(fieldCount))
+
+    !call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
+    !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !! Loop over fields
+    !do n = 1, fieldCount
+    !   ! Query FB to extract field
+    !   call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
+    !   if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    !   ! Query field
+    !   call ESMF_FieldGet(field, rank=lrank, rc=rc)
+    !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    !   
+    !   ! Query coordinate information from first field
+    !   if (n == 1) then
+    !      ! Add mesh to channel
+    !      call catalyst_conduit_node_set_path_char8_str(channel, "type", "mesh")
+
+    !      ! Create mesh node
+    !      mesh = catalyst_conduit_node_fetch(channel, "data")
+
+    !      ! Set type of mesh, construct as an unstructured mesh
+    !      call catalyst_conduit_node_set_path_char8_str(mesh, "coordsets/coords/type", "explicit")
+
+    !      if (.not. allocated(myMesh%nodeCoordsX)) then
+    !         ! Query mesh
+    !         call ESMF_FieldGet(field, mesh=fmesh, rc=rc)
+    !         if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    !         ! Ingest ESMF mesh
+    !         call IngestMeshData(fmesh, myMesh, trim(compName), cartesian=convertToCart, rc=rc)
+    !         if (chkerr(rc,__LINE__,u_FILE_u)) return
+    !      end if
+
+    !      ! Add coordinates
+    !      call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/x", &
+    !         myMesh%nodeCoordsX, int8(myMesh%nodeCount))
+    !      call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/y", &
+    !         myMesh%nodeCoordsY, int8(myMesh%nodeCount))
+    !      call catalyst_conduit_node_set_path_external_float64_ptr(mesh, "coordsets/coords/values/z", &
+    !         myMesh%nodeCoordsZ, int8(myMesh%nodeCount))
+
+    !      ! Add topology
+    !      call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/type", "unstructured")
+    !      call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/coordset", "coords")
+    !      call catalyst_conduit_node_set_path_char8_str(mesh, "topologies/mesh/elements/shape", trim(myMesh%elementShape))
+    !      do m = 1, size(myMesh%elementShapeMapName, dim=1)
+    !         call catalyst_conduit_node_set_path_int32(mesh, "topologies/mesh/elements/shape_map/"// &
+    !           trim(myMesh%elementShapeMapName(m)), myMesh%elementShapeMapValue(m))
+    !      end do
+    !      call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/shapes", myMesh%elementTypesShape, int8(myMesh%elementCount))
+    !      call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/sizes", myMesh%elementTypes, int8(myMesh%elementCount))
+    !      call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/offsets", myMesh%elementTypesOffset, int8(myMesh%elementCount))
+    !      call catalyst_conduit_node_set_path_int32_ptr(mesh, "topologies/mesh/elements/connectivity", myMesh%elementConn, int8(myMesh%numElementConn))
+
+    !      ! Create node for fields
+    !      fields = catalyst_conduit_node_fetch(mesh, "fields")
+
+    !      ! Add lat-lon coordinates
+    !      if (convertToCart) then
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "longitude/association", "vertex")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "longitude/topology", "mesh")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "longitude/volume_dependent", "false")
+    !         call catalyst_conduit_node_set_path_external_float64_ptr(fields, "longitude/values", &
+    !            myMesh%nodeCoordsLon, int8(myMesh%nodeCount))
+
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "latitude/association", "vertex")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "latitude/topology", "mesh")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "latitude/volume_dependent", "false")
+    !         call catalyst_conduit_node_set_path_external_float64_ptr(fields, "latitude/values", &
+    !            myMesh%nodeCoordsLat, int8(myMesh%nodeCount))
+    !      end if
+
+    !      ! Add mask information
+    !      if (myMesh%elementMaskIsPresent) then
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/association", "element")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/topology", "mesh")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "element_mask/volume_dependent", "false")
+    !         call catalyst_conduit_node_set_path_external_int32_ptr(fields, "element_mask/values", &
+    !            myMesh%elementMask, int8(myMesh%elementCount))
+    !      end if
+    !      if (myMesh%nodeMaskIsPresent) then
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/association", "vertex")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/topology", "mesh")
+    !         call catalyst_conduit_node_set_path_char8_str(fields, "node_mask/volume_dependent", "false")
+    !         call catalyst_conduit_node_set_path_external_int32_ptr(fields, "node_mask/values", &
+    !            myMesh%nodeMask, int8(myMesh%nodeCount))
+    !      end if
+    !   end if ! n == 1
+
+    !   ! Query field pointer
+    !   call ESMF_FieldGet(field, rank=lrank, rc=rc)
+    !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !   ! Add field to node
+    !   if (lrank == 1) then
+    !      ! Query field pointer
+    !      call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
+    !      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !      ! Set size of the data
+    !      dataSize = size(farrayPtr)
+
+    !      ! Set attributes
+    !      if (dataSize == myMesh%elementCount) then
+    !         call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "element")
+    !      else
+    !         call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "vertex")
+    !      end if
+
+    !      call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/topology", "mesh")
+    !      call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/volume_dependent", "false")
+
+    !      ! Add data to node
+    !      call catalyst_conduit_node_set_path_external_float64_ptr(fields, &
+    !         trim(fieldNameList(n))//"/values", farrayPtr, int8(dataSize))
+
+    !      ! Init pointers
+    !      nullify(farrayPtr)
+    !   else
+    !      ! Query field pointer
+    !      call ESMF_FieldGet(field, farrayPtr=farrayPtr2, rc=rc)
+    !      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !      ! Set size of the data
+    !      dataSize = size(farrayPtr2)
+    !      im = size(farrayPtr2, dim=1)
+    !      jm = size(farrayPtr2, dim=2)
+
+    !      ! Set attributes
+    !      if (size(farrayPtr2, dim=1) == myMesh%elementCount) then
+    !         call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "element")
+    !      else
+    !         call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/association", "vertex")
+    !      end if
+
+    !      call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/topology", "mesh")
+    !      call catalyst_conduit_node_set_path_char8_str(fields, trim(fieldNameList(n))//"/volume_dependent", "false")
+
+    !      !call catalyst_conduit_node_set_path_int32_ptr(fields, trim(fieldNameList(n))//"/shape", (/ im, jm /), int8(2))
+
+    !      ! Add data to node
+    !      !call catalyst_conduit_node_set_path_external_float64_ptr(fields, &
+    !      !   trim(fieldNameList(n))//"/values", farrayPtr2, int8(dataSize))
+    !      call catalyst_conduit_node_set_path_external_float64_ptr(fields, &
+    !         trim(fieldNameList(n))//"/values", farrayPtr2(:,1), int8(size(farrayPtr2, dim=1)))
+
+    !      ! Init pointers
+    !      nullify(farrayPtr2)
+    !   end if
+
+    !end do ! fieldCount
 
     ! Clean memeory
     deallocate(fieldNameList)

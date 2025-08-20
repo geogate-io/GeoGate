@@ -14,6 +14,7 @@ module geogate_share
   use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_INDEX_DELOCAL, ESMF_MAXSTR, ESMF_KIND_R8
   use ESMF, only: ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
   use ESMF, only: ESMF_StateGet, ESMF_StateItem_Flag, ESMF_STATEITEM_STATE
+  use ESMF, only: ESMF_FieldPrint
 
   use NUOPC, only: NUOPC_GetAttribute
 
@@ -128,6 +129,7 @@ module geogate_share
     integer :: ungriddedCount
     integer :: ungriddedLBound(1)
     integer :: ungriddedUBound(1)
+    integer :: gridToFieldMap(1)
     logical :: isPresent
     type(ESMF_Field) :: oldField, newField
     type(ESMF_MeshLoc) :: meshloc
@@ -174,24 +176,34 @@ module geogate_share
           ! Add ungridded dimension to field if rank > 1
           if (lrank == 2) then
              ! Determine ungridded lower and upper bounds for field
-             call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
-                  purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
+             call ESMF_FieldGet(oldField, ungriddedLBound=ungriddedLBound, &
+               ungriddedUBound=ungriddedUBound, gridToFieldMap=gridToFieldMap, rc=rc)
              if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-             if (ungriddedCount /= 1) then
-                call ESMF_LogWrite(trim(subname)//": ERROR ungriddedCount for "// &
-                     trim(lfieldnamelist(n))//" must be 1 if rank is 2 ", ESMF_LOGMSG_ERROR)
-                rc = ESMF_FAILURE
-                return
-             end if
+             ! Determine ungridded lower and upper bounds for field
+             !ungriddedCount = 0
+             !call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
+             !     purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
+             !if (chkerr(rc,__LINE__,u_FILE_u)) return
+             !print*, trim(lfieldNameList(n)), ungriddedCount
 
-             ! Set ungridded dimensions for field
-             call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
-                  purpose="Instance", valueList=ungriddedLBound, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-             call ESMF_AttributeGet(oldField, name="UngriddedUBound", convention="NUOPC", &
-                  purpose="Instance", valueList=ungriddedUBound, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
+          !   !if (ungriddedCount /= 1) then
+          !   !   call ESMF_LogWrite(trim(subname)//": ERROR ungriddedCount for "// &
+          !   !        trim(lfieldnamelist(n))//" must be 1 if rank is 2 ", ESMF_LOGMSG_ERROR)
+          !   !   rc = ESMF_FAILURE
+          !   !   return
+          !   !end if
+
+          !   ! Set ungridded dimensions for field
+          !   call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
+          !        purpose="Instance", valueList=ungriddedLBound, rc=rc)
+          !   if (chkerr(rc,__LINE__,u_FILE_u)) return
+          !   call ESMF_AttributeGet(oldField, name="UngriddedUBound", convention="NUOPC", &
+          !        purpose="Instance", valueList=ungriddedUBound, rc=rc)
+          !   if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             print*, "ungriddedLBound = ", ungriddedLBound
+             print*, "UngriddedUBound = ", UngriddedUBound
 
              ! Get 2d pointer for field
              call ESMF_FieldGet(oldField, farrayptr=dataptr2d, rc=rc)
@@ -200,7 +212,8 @@ module geogate_share
              ! Create new field with an ungridded dimension
              newField = ESMF_FieldCreate(lmesh, dataptr2d, ESMF_INDEX_DELOCAL, &
                   meshloc=meshloc, name=lfieldNameList(n), &
-                  ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, gridToFieldMap=(/2/), rc=rc)
+                  ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, &
+                  gridToFieldMap=gridToFieldMap, rc=rc)
              if (chkerr(rc,__LINE__,u_FILE_u)) return
 
           else if (lrank == 1) then
@@ -222,6 +235,7 @@ module geogate_share
           ! Add field to FB
           call ESMF_FieldBundleAdd(FBout, (/ newfield /), rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
+
        end do ! fieldCount
     end if
 

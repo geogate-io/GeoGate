@@ -31,6 +31,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_FieldCreate, ESMF_StateIsCreated
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
   use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT
+  use ESMF, only: ESMF_FieldPrint
 
   use NUOPC, only: NUOPC_CompDerive
   use NUOPC, only: NUOPC_CompSpecialize
@@ -577,8 +578,8 @@ contains
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Realize field
-             call NUOPC_Realize(is_local%wrap%NStateImp(n), fieldName=trim(itemNameList(m)), rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             !call NUOPC_Realize(is_local%wrap%NStateImp(n), fieldName=trim(itemNameList(m)), rc=rc)
+             !if (ChkErr(rc,__LINE__,u_FILE_u)) return
           end if
        end do
 
@@ -666,7 +667,7 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: n, m
+    integer :: n, m, lrank
     integer :: dimCount, itemCount
     logical :: isPresent, meshCreated
     integer :: gridToFieldMapCount, ungriddedCount
@@ -723,25 +724,25 @@ contains
           call ESMF_LogWrite(message, ESMF_LOGMSG_INFO)
 
           ! Query grid dimension and attach attribute to field
-          if (n == 1) then
-             call ESMF_FieldGet(field, dimCount=dimCount, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !if (n == 1) then
+          !   call ESMF_FieldGet(field, dimCount=dimCount, rc=rc)
+          !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             allocate(minIndex(dimCount))
-             allocate(maxIndex(dimCount))
+          !   allocate(minIndex(dimCount))
+          !   allocate(maxIndex(dimCount))
 
-             call ESMF_FieldGet(field, minIndex=minIndex, maxIndex=maxIndex, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !   call ESMF_FieldGet(field, minIndex=minIndex, maxIndex=maxIndex, rc=rc)
+          !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             do m = 1, dimCount
-                write(message,'(A,I1,A,2I5)') trim(subname)//': minIndex, maxIndex for dim ', &
-                  m, ' = ', minIndex(m), maxIndex(m)
-                call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-             end do
+          !   do m = 1, dimCount
+          !      write(message,'(A,I1,A,2I5)') trim(subname)//': minIndex, maxIndex for dim ', &
+          !        m, ' = ', minIndex(m), maxIndex(m)
+          !      call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+          !   end do
 
-             deallocate(minIndex)
-             deallocate(maxIndex)
-          end if
+          !   deallocate(minIndex)
+          !   deallocate(maxIndex)
+          !end if
 
           ! Convert grid to mesh
           if (.not. meshCreated) then
@@ -751,20 +752,58 @@ contains
              meshCreated = .true.
           end if
 
-          ! Create field on mesh
-          meshField = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R8, meshloc=ESMF_MESHLOC_ELEMENT, name=trim(itemNameList(n)), rc=rc)
+          ! Query ungridded dimensions
+          ungriddedCount = 0
+
+          call ESMF_AttributeGet(field, name="UngriddedLBound", convention="NUOPC", &
+            purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          allocate(ungriddedLBound(ungriddedCount), ungriddedUBound(ungriddedCount))
+
+          if (ungriddedCount > 0) then
+             call ESMF_AttributeGet(field, name="UngriddedLBound", convention="NUOPC", &
+               purpose="Instance", valueList=ungriddedLBound, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             call ESMF_AttributeGet(field, name="UngriddedUBound", convention="NUOPC", &
+               purpose="Instance", valueList=ungriddedUBound, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
+
+          !print*, "ungriddedCount, ungriddedLBound, ungriddedUBound = ", ungriddedCount, ungriddedLBound, ungriddedUBound
+
+          !call ESMF_FieldPrint(field, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Create field on mesh
+          meshField = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R8, meshloc=ESMF_MESHLOC_ELEMENT, &
+            ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, &
+            gridToFieldMap=(/1/), name=trim(itemNameList(n)), rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Set attributes
+          !call ESMF_InfoGetFromHost(meshField, info, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          !call ESMF_InfoSet(info, "/NUOPC/Instance/UngriddedLBound", ungriddedLbound, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !call ESMF_InfoSet(info, "/NUOPC/Instance/UngriddedUBound", ungriddedUbound, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          !call ESMF_FieldPrint(meshField, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return          
 
           ! Set dimensions using info object
-          call ESMF_InfoGetFromHost(meshField, info, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !call ESMF_InfoGetFromHost(meshField, info, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          call ESMF_InfoSet(info, "dimCount", dimCount, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_InfoSet(info, "minIndex", minIndex, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_InfoSet(info, "maxIndex", maxIndex, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !call ESMF_InfoSet(info, "dimCount", dimCount, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !call ESMF_InfoSet(info, "minIndex", minIndex, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !call ESMF_InfoSet(info, "maxIndex", maxIndex, rc=rc)
+          !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
           ! Swap grid for mesh, at this point, only connected fields are in the state
           call NUOPC_Realize(state, field=meshField, rc=rc)

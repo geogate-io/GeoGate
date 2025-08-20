@@ -82,11 +82,13 @@ contains
     type(meshType), intent(inout) :: myMesh
     character(len=*), intent(in) :: compName
     logical, intent(in), optional :: cartesian
+    logical, intent(in), optional :: threed
     integer, intent(out), optional :: rc
 
     ! local variables
     integer :: m
     logical :: convertCartesian
+    logical :: construct3Dmesh
     logical :: hasTri = .false.
     logical :: hasQuad = .false.
     real(ESMF_KIND_R8) :: theta, phi
@@ -103,6 +105,9 @@ contains
     ! Handle optional arguments
     convertCartesian = .false.
     if (present(cartesian)) convertCartesian = cartesian
+
+    construct3Dmesh = .true.
+    if (present(threed)) construct3Dmesh = threed
 
     ! Extract required information from mesh
     call ESMF_MeshGet(mesh, spatialDim=myMesh%spatialDim, nodeCount=myMesh%nodeCount, &
