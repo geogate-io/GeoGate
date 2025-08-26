@@ -667,13 +667,11 @@ contains
 
     ! local variables
     integer :: n, m
-    integer :: dimCount, itemCount
+    integer :: itemCount
     logical :: isPresent, meshCreated
     integer :: gridToFieldMapCount, ungriddedCount
     integer, allocatable :: gridToFieldMap(:)
     integer, allocatable :: ungriddedLBound(:), ungriddedUBound(:)
-    integer, allocatable :: minIndex(:), maxIndex(:)
-    type(ESMF_Info) :: info
     type(ESMF_Field) :: field, meshField
     type(ESMF_Grid) :: grid
     type(ESMF_Mesh) :: mesh
@@ -722,27 +720,6 @@ contains
           write(message,'(A,L)') trim(subname)//': has ESMF_STAGGERLOC_CORNER =', isPresent
           call ESMF_LogWrite(message, ESMF_LOGMSG_INFO)
 
-          ! Query grid dimension and attach attribute to field
-          if (n == 1) then
-             call ESMF_FieldGet(field, dimCount=dimCount, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             allocate(minIndex(dimCount))
-             allocate(maxIndex(dimCount))
-
-             call ESMF_FieldGet(field, minIndex=minIndex, maxIndex=maxIndex, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-             do m = 1, dimCount
-                write(message,'(A,I1,A,2I5)') trim(subname)//': minIndex, maxIndex for dim ', &
-                  m, ' = ', minIndex(m), maxIndex(m)
-                call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-             end do
-
-             deallocate(minIndex)
-             deallocate(maxIndex)
-          end if
-
           ! Convert grid to mesh
           if (.not. meshCreated) then
              call ESMF_LogWrite(trim(subname)//": create mesh from grid using "//trim(fieldName), ESMF_LOGMSG_INFO)
@@ -753,17 +730,6 @@ contains
 
           ! Create field on mesh
           meshField = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R8, meshloc=ESMF_MESHLOC_ELEMENT, name=trim(itemNameList(n)), rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-          ! Set dimensions using info object
-          call ESMF_InfoGetFromHost(meshField, info, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-          call ESMF_InfoSet(info, "dimCount", dimCount, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_InfoSet(info, "minIndex", minIndex, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_InfoSet(info, "maxIndex", maxIndex, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
           ! Swap grid for mesh, at this point, only connected fields are in the state

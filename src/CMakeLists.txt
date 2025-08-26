@@ -35,11 +35,13 @@ endif()
 
 # Find Catalyst
 if(GEOGATE_USE_CATALYST)
+  message("ParaView Catalyst plugin is activated.")
   find_package(catalyst 2.0 REQUIRED)
 endif()
 
 # Find Conduit
 if(GEOGATE_USE_PYTHON)
+  message("Python plugin is activated.")
   find_package(Conduit REQUIRED)
 endif()
 
@@ -71,7 +73,7 @@ list(APPEND geogate_src_files geogate_nuopc.F90)
 ### Set variables
 ###############################################################################
 
-set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR}/mod)
+set(CMAKE_Fortran_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/mod)
 
 ###############################################################################
 ### Application
@@ -109,6 +111,7 @@ endif()
 add_subdirectory(shared)
 add_dependencies(geogate geogate_shared)
 target_link_libraries(geogate PRIVATE geogate_shared)
+target_include_directories(geogate PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/mod>)
 
 # List all variables (for debugging)
 #get_cmake_property(_variableNames VARIABLES)
