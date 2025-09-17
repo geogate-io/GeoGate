@@ -33,6 +33,7 @@ module geogate_share
   !-----------------------------------------------------------------------------
 
   logical, public :: debugMode
+  real(ESMF_KIND_R8), public, parameter :: fillValue = 1.0d20
   real(ESMF_KIND_R8), public, parameter :: constPi = 4.0d0*atan(1.0d0)
   real(ESMF_KIND_R8), public, parameter :: constHalfPi = 0.5d0*constPi
   real(ESMF_KIND_R8), public, parameter :: rad2Deg = 180.0d0/constPi

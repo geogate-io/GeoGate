@@ -158,6 +158,8 @@ contains
        call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
     end do
 
+
+
     ! Clean memory
     call conduit_node_destroy(node)
 
@@ -290,5 +292,26 @@ contains
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
   end subroutine FB2Node
+
+  !-----------------------------------------------------------------------------
+
+  subroutine Node2FB(node, compName, FBout, rc)
+
+    ! input/output variables
+    type(C_PTR), intent(in) :: node
+    character(len=*), intent(in) :: compName
+    type(ESMF_FieldBundle), intent(inout) :: FBout
+    integer, intent(out), optional :: rc
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(Node2FB) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
+
+    call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
+
+  end subroutine Node2FB
 
 end module geogate_phases_python

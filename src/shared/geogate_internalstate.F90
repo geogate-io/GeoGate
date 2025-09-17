@@ -30,6 +30,8 @@ module geogate_internalstate
      character(ESMF_MAXSTR), allocatable :: compName(:)
      type(ESMF_State), pointer :: NStateImp(:)
      type(ESMF_FieldBundle), pointer :: FBImp(:)
+     type(ESMF_State) :: NStateExp
+     type(ESMF_FieldBundle) :: FBExp
   end type InternalStateStruct
 
   !-----------------------------------------------------------------------------

@@ -31,6 +31,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_FieldCreate, ESMF_StateIsCreated
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
   use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT
+  use ESMF, only: ESMF_FieldFill, ESMF_FILEFORMAT_ESMFMESH
 
   use NUOPC, only: NUOPC_CompDerive
   use NUOPC, only: NUOPC_CompSpecialize
@@ -38,6 +39,7 @@ module geogate_nuopc
   use NUOPC, only: NUOPC_SetAttribute, NUOPC_GetAttribute
   use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_CompAttributeSet
   use NUOPC, only: NUOPC_CompCheckSetClock
+  use NUOPC, only: NUOPC_Advertise
   use NUOPC, only: NUOPC_Realize
   use NUOPC, only: NUOPC_FieldDictionarySetAutoAdd, NUOPC_AddNamespace
   use NUOPC, only: NUOPC_NoOP
@@ -52,6 +54,7 @@ module geogate_nuopc
   use NUOPC_Model, only: label_ModifyAdvertised
   use NUOPC_Model, only: label_AcceptTransfer
   use NUOPC_Model, only: label_RealizeAccepted
+  use NUOPC_Model, only: label_RealizeProvided
   use NUOPC_Model, only: label_Advance
   use NUOPC_Model, only: label_CheckImport
   use NUOPC_Model, only: label_SetRunClock
@@ -60,6 +63,7 @@ module geogate_nuopc
   use geogate_share, only: FB_init_pointer
   use geogate_share, only: StringSplit
   use geogate_share, only: debugMode
+  use geogate_share, only: fillValue
   
   use geogate_internalstate, only: InternalState
   use geogate_internalstate, only: InternalStateInit 
@@ -90,6 +94,7 @@ module geogate_nuopc
   !-----------------------------------------------------------------------------
 
   integer :: dbug = 0
+  character(len=ESMF_MAXSTR), allocatable :: exportFieldNameList(:)
   character(len=*), parameter :: modName = "(geogate_nuopc)"
   character(len=*), parameter :: u_FILE_u = __FILE__
 
@@ -135,6 +140,10 @@ contains
 
     ! It is used to realized mirrored fields and also update decomposition
     call NUOPC_CompSpecialize(gcomp, specLabel=label_RealizeAccepted, specRoutine=RealizeAccepted, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! It is used to realize export fields
+    call NUOPC_CompSpecialize(gcomp, specLabel=label_RealizeProvided, specRoutine=RealizeProvided, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! It is used for data initialization
@@ -195,7 +204,8 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: stat
+    integer :: stat, n, itemCount
+    logical :: isPresent, isSet
     type(InternalState) :: is_local
     type(ESMF_State) :: importState, exportState
     character(len=*), parameter :: subname = trim(modName)//':(Advertise) '
@@ -231,6 +241,32 @@ contains
 
     call NUOPC_SetAttribute(importState, "FieldTransferPolicy", "transferAllWithNamespace", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    !------------------
+    ! Add fields to export state
+    !------------------
+
+    ! Check number of export fields
+    itemCount = 0
+    call NUOPC_CompAttributeGet(gcomp, name="ExportFields", itemCount=itemCount, &
+      isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (itemCount > 0) then
+       ! Allocate array for field list
+       allocate(exportFieldNameList(itemCount))
+
+       ! Query for list of export fields
+       call NUOPC_CompAttributeGet(gcomp, name="ExportFields", valueList=exportFieldNameList, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Add fields to export state
+       do n = 1, itemCount
+          call NUOPC_Advertise(exportState, standardName=trim(exportFieldNameList(n)), &
+             TransferOfferGeomObject='will provide', rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
 
     !------------------
     ! Enable adding fields to field dictionary automatically
@@ -555,7 +591,7 @@ contains
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Loop over states
+    ! Loop over import states
     do n = 1, is_local%wrap%numComp
        ! Query state
        call ESMF_StateGet(is_local%wrap%NStateImp(n), itemCount=itemCount, rc=rc)
@@ -590,6 +626,83 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
  
   end subroutine RealizeAccepted
+
+  !-----------------------------------------------------------------------------
+
+  subroutine RealizeProvided(gcomp, rc)
+
+    ! input/output variables
+    type(ESMF_GridComp) :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: n
+    logical :: isPresent, isSet
+    type(ESMF_Mesh) :: mesh
+    type(ESMF_Field) :: meshField
+    type(InternalState) :: is_local
+    character(len=ESMF_MAXSTR) :: mesh_file
+    character(len=ESMF_MAXSTR) :: cvalue
+    character(len=*), parameter :: subname = trim(modName)//':(RealizeProvided) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Get the internal state
+    nullify(is_local%wrap)
+    call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Query for ESMF mesh file for export fields
+    mesh_file = ""
+    call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
+      isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isPresent .and. isSet) then
+       mesh_file = trim(cvalue)
+       call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
+    else
+       call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields. "// &
+          "Skip adding fields to export state!", ESMF_LOGMSG_INFO)
+       return
+    endif
+
+    ! Check number of export fields
+    if (size(exportFieldNameList) > 0) then
+       ! Create mesh from mesh file
+       mesh = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Query for exportState
+       call NUOPC_ModelGet(gcomp, exportState=is_local%wrap%NStateExp, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Create fields
+       ! Assuming that all fields share the same grid/mesh
+       do n = 1, size(exportFieldNameList)
+          ! Create field on mesh
+          meshField = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R8, &
+            meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Initialize field
+          call ESMF_FieldFill(meshField, dataFillScheme="const", const1=fillValue, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Realize field
+          call NUOPC_Realize(is_local%wrap%NStateExp, field=meshField, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+
+       ! Add field to FB for easy access
+       call FB_init_pointer(is_local%wrap%NStateExp, is_local%wrap%FBExp, name='FBExp', rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine RealizeProvided
 
   !-----------------------------------------------------------------------------
 
