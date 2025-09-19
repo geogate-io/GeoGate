@@ -78,7 +78,66 @@ extern "C" {
     if (err) {
        pyintp->check_error();
     }
-     
   }
 
+  conduit_node* conduit_fort_from_py(const char *py_script) {
+    // create python interpreter
+    PythonInterpreter *pyintp = init_python_interpreter();
+
+    // trigger script
+    bool err = pyintp->run_script_file(py_script);
+
+    // check error
+    if (err) {
+       pyintp->check_error();
+    }
+    // get global dict and insert wrapped conduit node
+    PyObject *py_mod_dict =  pyintp->global_dict();
+
+    // create py object to get the conduit node
+    PyObject *py_obj = pyintp->get_dict_object(py_mod_dict, "my_node_return");
+
+    // get cpp ref from python node
+    conduit::Node *n_res = PyConduit_Node_Get_Node_Ptr(py_obj);
+
+    // return the c pointer
+    return conduit::c_node(n_res);
+  }
+
+  conduit_node* conduit_fort_to_py_to_fort(conduit_node *data, const char *py_script) {
+    // create python interpreter
+    PythonInterpreter *pyintp = init_python_interpreter();
+
+    // get global dict and insert wrapped conduit node
+    PyObject *py_mod_dict =  pyintp->global_dict();
+
+    // get cpp ref to passed node
+    conduit::Node &n = conduit::cpp_node_ref(data);
+
+    // create py object to wrap the conduit node
+    PyObject *py_node = PyConduit_Node_Python_Wrap(&n, 0); // python owns => false
+
+    // my_node is set in here statically, it will be used to access node under python
+    pyintp->set_dict_object(py_mod_dict, py_node, "my_node");
+
+    // trigger script
+    bool err = pyintp->run_script_file(py_script, py_mod_dict);
+
+    // check error
+    if (err) {
+       pyintp->check_error();
+    }
+
+    // get global dict and fetch wrapped conduit node
+    py_mod_dict = pyintp->global_dict();
+
+    // create py object to get the conduit node
+    PyObject *py_obj = pyintp->get_dict_object(py_mod_dict, "my_node_return");
+
+    // get cpp ref from python node
+    conduit::Node *n_res = PyConduit_Node_Get_Node_Ptr(py_obj);
+
+    // return the c pointer
+    return conduit::c_node(n_res);
+  }
 }

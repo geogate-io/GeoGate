@@ -15,8 +15,9 @@ module geogate_phases_python
   use ESMF, only: ESMF_Info, ESMF_InfoGetFromHost
   use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMBarrier, ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_MAXSTR, ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
+  use ESMF, only: ESMF_UtilStringLowerCase, ESMF_FieldBundleIsCreated
 
-  use NUOPC, only: NUOPC_CompAttributeGet
+  use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_GetAttribute
   use NUOPC_Model, only: NUOPC_ModelGet
 
   use conduit
@@ -26,6 +27,7 @@ module geogate_phases_python
   use geogate_types, only: IngestMeshData, meshType
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
+  use geogate_python_interface, only: conduit_fort_to_py_to_fort
 
   implicit none
   private
@@ -44,7 +46,8 @@ module geogate_phases_python
   ! Private module data
   !-----------------------------------------------------------------------------
 
-  type(meshType), allocatable :: myMesh(:)
+  type(meshType) :: myMeshExp
+  type(meshType), allocatable :: myMeshImp(:)
   character(ESMF_MAXSTR), allocatable :: scriptNames(:)
   character(len=*), parameter :: modName = "(geogate_phases_python)"
   character(len=*), parameter :: u_FILE_u = __FILE__
@@ -60,7 +63,7 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
-    type(C_PTR) :: node
+    type(C_PTR) :: node, nodeOut
     type(C_PTR) :: info
     integer :: n, mpiComm, localPet, petCount
     logical :: isPresent, isSet
@@ -70,6 +73,7 @@ contains
     type(ESMF_Clock) :: clock
     type(ESMF_VM) :: vm
     integer, save :: timeStep = 0
+    character(ESMF_MAXSTR) :: namespace
     character(ESMF_MAXSTR) :: cvalue, message, timeStr
     character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_run) '
     !---------------------------------------------------------------------------
@@ -118,7 +122,7 @@ contains
        first_time = .false.
     end if
 
-    ! Create Conduit node
+    ! Create Conduit node for input
     node = conduit_node_create()
 
     ! Add time information
@@ -130,20 +134,34 @@ contains
     call conduit_node_set_path_int32(node, "mpi/localpet", localPet)
     call conduit_node_set_path_int32(node, "mpi/petcount", petCount)
 
-    ! Allocate myMesh
-    if (.not. allocated(myMesh)) allocate(myMesh(is_local%wrap%numComp))
+    ! Add import data to node
+    if (is_local%wrap%numComp > 0) then
+       ! Allocate myMesh for import
+       if (.not. allocated(myMeshImp)) allocate(myMeshImp(is_local%wrap%numComp))
 
-    ! Loop over FBs
-    do n = 1, is_local%wrap%numComp
-       ! Load content of FB to Conduit node
-       call FB2Node(is_local%wrap%FBImp(n), trim(is_local%wrap%compName(n)), myMesh(n), node, rc=rc)
+       ! Loop over import FBs
+       do n = 1, is_local%wrap%numComp
+          ! Load content of FB to Conduit node
+          call FB2Node(is_local%wrap%FBImp(n), "import", trim(is_local%wrap%compName(n)), myMeshImp(n), node, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
+
+    ! Query name space from export state
+    call NUOPC_GetAttribute(is_local%wrap%NStateExp, name="Namespace", value=namespace, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    namespace = ESMF_UtilStringLowerCase(trim(namespace))
+
+    ! Add export data to node
+    if (ESMF_FieldBundleIsCreated(is_local%wrap%FBExp)) then
+       call FB2Node(is_local%wrap%FBExp, "export", trim(namespace), myMeshExp, node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    end do
+    end if
 
-    ! Debug statements
+    ! Info related to input node 
     if (debugMode) then
        ! Save node information
-       write(message, fmt='(A,I3.3,A,I3.3)') "node_"//trim(timeStr)//"_", localPet, "_", petCount
+       write(message, fmt='(A,I3.3,A,I3.3)') "nodeIn_"//trim(timeStr)//"_", localPet, "_", petCount
        call conduit_node_save(node, trim(message)//".json", "json")
 
        ! Print node information with details about memory allocation
@@ -153,12 +171,15 @@ contains
        call conduit_node_destroy(info)
     end if
 
-    ! Pass node to Python scripts
+    ! Loop over scripts
     do n = 1, size(scriptNames, dim=1)
-       call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
+       ! Pass node to Python
+       nodeOut = conduit_fort_to_py_to_fort(node, trim(scriptNames(n))//char(0))
+
+       ! Update export fields
+       call Node2FB(is_local%wrap%FBExp, namespace, nodeOut, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end do
-
-
 
     ! Clean memory
     call conduit_node_destroy(node)
@@ -172,10 +193,11 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine FB2Node(FBin, compName, myMesh, node, rc)
+  subroutine FB2Node(FBin, parent, compName, myMesh, node, rc)
 
     ! input/output variables
     type(ESMF_FieldBundle) :: FBin
+    character(len=*), intent(in) :: parent
     character(len=*), intent(in) :: compName
     type(meshType), intent(inout) :: myMesh
     type(C_PTR), intent(inout) :: node
@@ -197,7 +219,7 @@ contains
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
 
     ! Add channel
-    channel = conduit_node_fetch(node, "channels/"//trim(compName))
+    channel = conduit_node_fetch(node, "channels/"//trim(parent)//"/"//trim(compName))
 
     ! Query number of item in the FB
     call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
@@ -295,20 +317,71 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine Node2FB(node, compName, FBout, rc)
+  subroutine Node2FB(FBin, compName, node, rc)
 
     ! input/output variables
-    type(C_PTR), intent(in) :: node
+    type(ESMF_FieldBundle), intent(inout) :: FBin
     character(len=*), intent(in) :: compName
-    type(ESMF_FieldBundle), intent(inout) :: FBout
+    type(C_PTR), intent(in) :: node
     integer, intent(out), optional :: rc
 
     ! local variables
+    type(C_PTR) :: field
+    type(C_PTR) :: fields
+    integer :: n, fieldCount
+    real(ESMF_KIND_R8), pointer :: farrayPtr(:)
+    real(ESMF_KIND_R8), pointer :: farrayPtrNode(:)
+    type(ESMF_Field) :: lfield
+    character(ESMF_MAXSTR) :: message
+    character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
     character(len=*), parameter :: subname = trim(modName)//':(Node2FB) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
+
+    ! Create node with fields
+    fields = conduit_node_fetch(node, "data/fields")
+
+    ! Query number of item in the FB
+    call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Process fields
+    if (fieldCount > 0) then
+       ! Allocate array for field names
+       allocate(fieldNameList(fieldCount))
+
+       ! Query available field names
+       call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Loop over fields
+       do n = 1, fieldCount
+          ! Query field
+          call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=lfield, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          ! Try to find same field in the node
+          ! Fields in received node needs to match with the ones in the state (i.e. export)
+          if (conduit_node_has_child(fields, trim(fieldNameList(n)))) then
+             ! Debug output
+             call ESMF_LogWrite(trim(subname)//": field "//trim(fieldNameList(n))//" is found in the node!")
+
+             ! Get field from node
+             field = conduit_node_child_by_name(fields, trim(fieldNameList(n)))
+
+             ! Query field pointer
+             call ESMF_FieldGet(lfield, farrayPtr=farrayPtr, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Update ESMF field
+             ! TODO: Assumes data is one-dimensional and also double type
+             call conduit_node_fetch_path_as_float64_ptr(field, "values", farrayPtrNode)
+             farrayPtr(:) = farrayPtrNode(:)
+          end if
+       end do
+    end if
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
