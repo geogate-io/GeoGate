@@ -8,7 +8,7 @@ Plugin: Catalyst
 developed for simulations to analyze and visualize data in situ. The generic Catalyst plugin is 
 designed to provide in situ data visualization and processing capability to the fully coupled Earth 
 system modeling applications or individual model components that use `ESMF (Earth System Modeling Framework) 
-<https://earthsystemmodeling.org/doc/>_` and `NUOPC (National Unified Operational Prediction Capability) 
+<https://earthsystemmodeling.org/doc/>`_ and `NUOPC (National Unified Operational Prediction Capability) 
 Layer <https://earthsystemmodeling.org/nuopc/>`_ .
 
 =============
@@ -33,7 +33,7 @@ package manager to manage software dependencies in a more flexible way.
 
 Additional packages (and their dependencies) or new versions of packages can be installed by chaining existing
 Spack-stack installation on supported Tier I and II platforms. The list of preconfigured platforms can be seen in
-`spack-stack documentation <https://spack-stack.readthedocs.io/en/latest/PreConfiguredSites.html>`.
+`spack-stack documentation <https://spack-stack.readthedocs.io/en/latest/PreConfiguredSites.html>`_.
 
 MSU Hercules
 ------------
@@ -42,65 +42,73 @@ Checkout spack-stack and create new environment by chaining exiting one:
 
 .. code-block:: console
 
-  git clone --recursive https://github.com/JCSDA/spack-stack.git spack-stack-1.9.1
-  cd spack-stack-1.9.1
-  git checkout spack-stack-1.9.1
+  git clone --recursive https://github.com/JCSDA/spack-stack.git spack-stack-1.9.2
+  cd spack-stack-1.9.2
+  git checkout spack-stack-1.9.2
   git submodule update --init --recursive
   . setup.sh
-  spack stack create env --name cop --template empty --site hercules --compiler intel --upstream /apps/contrib/spack-stack/spack-stack-1.9.1/envs/ue-oneapi-2024.1.0/install
-  cd envs/cop
+  spack stack create env --name pv_osmesa_intel --template empty --site hercules --compiler intel --upstream /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/install
+  cd envs/pv_osmesa_intel
   spack env activate .
 
-Update `site/packages.yaml` (under `envs/cop` directory) and add following to the begining:
+Copy `site/` and `common` directories from upstream installation to `envs/pv_osmesa_intel` directory.
+
+.. code-block:: console
+
+  cp -r /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/site .
+  cp -r /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/common .
+
+Update `spack.yaml` as following:
 
 .. code-block:: YAML 
 
-  packages:
-    # For addressing https://github.com/JCSDA/spack-stack/issues/1355
-    #   Use system zlib instead of spack-built zlib-ng
-    all:
-      compiler:: [oneapi@2024.2.1]
-      providers:
-        mpi:: [intel-oneapi-mpi@2021.13]
-        blas:: [openblas]
-        fftw-api:: [fftw]
-        lapack:: [openblas]
-        zlib-api:: [zlib]
-    mpi:
-      buildable: false
-    intel-oneapi-mpi:
-      buildable: false
-      externals:
-      - spec: intel-oneapi-mpi@2021.13%oneapi@2024.2.1
-        prefix: /apps/spack-managed-x86_64_v3-v1.0/oneapi-2024.2.1/intel-oneapi-mpi-2021.13.1-3pv63eugwmse2xpeglxib4dr2oeb42g2
-        modules:
-        - spack-managed-x86-64_v3
-        - intel-oneapi-compilers/2024.2.1
-        - intel-oneapi-mpi@2021.13.1
-    intel-oneapi-mkl:
-      buildable: false
-      externals:
-      - spec: intel-oneapi-mkl@2024.2.1
-        prefix: /apps/spack-managed-x86_64_v3-v1.0/gcc-11.3.1/intel-oneapi-mkl-2024.2.1-aeiool3i5jj4newwifvkhow5almp67rt
-        modules:
-        - spack-managed-x86-64_v3
-        - intel-oneapi-mkl/2024.2.1
-    intel-oneapi-runtime:
-      externals:
-      - spec: intel-oneapi-runtime@2024.2.1%oneapi@2024.2.1
-        prefix: /apps/spack-managed-x86_64_v3-v1.0/oneapi-2024.2.1/intel-oneapi-runtime-2024.2.1-hl5zgdjaldynq35dq3yotclfy2vblybx
-        modules:
-        - spack-managed-x86-64_v3
-        - intel-oneapi-compilers/2024.2.1
-        - intel-oneapi-runtime/2024.2.1
-    egl:
-      buildable: False
-      externals:
-      - spec: egl@1.5.0
-        prefix: /usr
+  spack:
+    concretizer:
+      unify: when_possible
+
+    config:
+      install_tree:
+        root: $env/install
+    modules:
+      default:
+        roots:
+          lmod: $env/install/modulefiles
+          tcl: $env/install/modulefiles
+
+    view: false
+    include:
+    - site
+    - common
+
+    specs:
+    - paraview@5.13.1+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl]
+      osmesa  %oneapi@2024.2.1
+      ^libcatalyst@2.0.0+fortran~ipo+python+conduit %oneapi@2024.2.1
+      ^conduit@0.9.2+fortran~ipo+python+mpi %oneapi@2024.2.1
+      ^mesa@23.3.6+glx+opengl~opengles+osmesa~strip+llvm %oneapi@2024.2.1
+      ^llvm %oneapi@2024.2.1
+    packages:
+      all:
+        prefer: ['%oneapi@2024.2.1']
+        target: [linux-rocky9-icelake]
+    upstreams:
+      spack-stack-1.9.2-ue-oneapi-2024.1.0:
+        install_tree: /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/install
 
 .. note::
   The indentation needs to be aligned correctly based on the structure of the file.
+
+Then, following commands can be used to complate the installation of chained environment,
+
+.. code-block:: console
+
+  spack concretize --force --deprecated --reuse
+  spack install
+  spack module lmod refresh --upstream-modules
+  spack stack setup-meta-modules
+
+.. note::
+  The GNU installation can be also chained with the same approach.
 
 NCAR Derecho
 ------------
