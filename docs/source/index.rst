@@ -11,7 +11,10 @@ Welcome to GeoGate's documentation!
    :numbered:
    :caption: Contents:
 
+   Dependencies.rst
    PluginCatalyst.rst
+   PluginPython.rst
+   GeoGateProtoApps.rst
 
 Indices and tables
 ==================

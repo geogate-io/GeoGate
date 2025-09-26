@@ -1,0 +1,5 @@
+.. _PluginPython:
+
+**************
+Plugin: Python
+**************
