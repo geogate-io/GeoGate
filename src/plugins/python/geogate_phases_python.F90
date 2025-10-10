@@ -22,6 +22,7 @@ module geogate_phases_python
 
   use conduit
   use, intrinsic :: iso_c_binding, only : C_PTR
+  use, intrinsic :: iso_c_binding, only : c_associated
 
   use geogate_share, only: ChkErr, StringSplit, debugMode
   use geogate_types, only: IngestMeshData, meshType
@@ -152,10 +153,31 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     namespace = ESMF_UtilStringLowerCase(trim(namespace))
 
-    ! Add export data to node
+    ! Check export state
     if (ESMF_FieldBundleIsCreated(is_local%wrap%FBExp)) then
+       ! Add export data to node
        call FB2Node(is_local%wrap%FBExp, "export", trim(namespace), myMeshExp, node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Loop over scripts
+       do n = 1, size(scriptNames, dim=1)
+          ! Pass node to Python
+          nodeOut = conduit_fort_to_py_to_fort(node, trim(scriptNames(n))//char(0))
+
+          ! Update export fields
+          if (c_associated(nodeOut)) then
+             call Node2FB(is_local%wrap%FBExp, namespace, nodeOut, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          else
+             call ESMF_LogWrite(subname//' Nothing returned from Python!', ESMF_LOGMSG_INFO)
+          end if
+       end do
+    else
+       ! Loop over scripts
+       do n = 1, size(scriptNames, dim=1)
+          ! Pass node to Python
+          call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
+       end do
     end if
 
     ! Info related to input node 
@@ -170,16 +192,6 @@ contains
        call conduit_node_print(info)
        call conduit_node_destroy(info)
     end if
-
-    ! Loop over scripts
-    do n = 1, size(scriptNames, dim=1)
-       ! Pass node to Python
-       nodeOut = conduit_fort_to_py_to_fort(node, trim(scriptNames(n))//char(0))
-
-       ! Update export fields
-       call Node2FB(is_local%wrap%FBExp, namespace, nodeOut, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    end do
 
     ! Clean memory
     call conduit_node_destroy(node)
@@ -341,7 +353,12 @@ contains
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
 
     ! Create node with fields
-    fields = conduit_node_fetch(node, "data/fields")
+    if (conduit_node_has_path(node, "data/fields")) then
+       fields = conduit_node_fetch(node, "data/fields")
+    else
+       call ESMF_LogWrite("There are no attached fields to return node!", ESMF_LOGMSG_INFO)
+       return
+    end if
 
     ! Query number of item in the FB
     call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)

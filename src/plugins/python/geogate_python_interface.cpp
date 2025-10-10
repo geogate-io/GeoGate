@@ -131,13 +131,24 @@ extern "C" {
     // get global dict and fetch wrapped conduit node
     py_mod_dict = pyintp->global_dict();
 
-    // create py object to get the conduit node
-    PyObject *py_obj = pyintp->get_dict_object(py_mod_dict, "my_node_return");
+    // check my_node_return in dictionary
+    std::string cpp_key = "my_node_return";
+    PyObject *py_key = PyUnicode_FromString(cpp_key.c_str());
+    int contains = PyDict_Contains(py_mod_dict, py_key);
+    Py_DECREF(py_key);
 
-    // get cpp ref from python node
-    conduit::Node *n_res = PyConduit_Node_Get_Node_Ptr(py_obj);
+    if (contains == 1) {
+       // create py object to get the conduit node
+       PyObject *py_obj = pyintp->get_dict_object(py_mod_dict, cpp_key.c_str());
 
-    // return the c pointer
-    return conduit::c_node(n_res);
+       // get cpp ref from python node
+       conduit::Node *n_res = PyConduit_Node_Get_Node_Ptr(py_obj);
+
+       // return the c pointer
+       return conduit::c_node(n_res);
+    } else {
+       std::cout << "INFO: could not find 'my_node_return' key returned from Python!" << std::endl;
+       return NULL;
+    }
   }
 }
