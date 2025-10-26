@@ -183,7 +183,7 @@ contains
     ! Info related to input node 
     if (debugMode) then
        ! Save node information
-       write(message, fmt='(A,I3.3,A,I3.3)') "nodeIn_"//trim(timeStr)//"_", localPet, "_", petCount
+       write(message, fmt='(A,I3.3,A,I3.3)') "node_"//trim(timeStr)//"_", localPet, "_", petCount
        call conduit_node_save(node, trim(message)//".json", "json")
 
        ! Print node information with details about memory allocation
