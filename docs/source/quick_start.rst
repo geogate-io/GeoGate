@@ -9,7 +9,7 @@ Installing Third Party Dependencies
 
 The quickest way to install GeoGate dependencies is via `Conda <https://conda-forge.org>`_ and `Spack <https://spack.io>`_ package managers.
 
-The following section includes information to install dependencies from scratch and uses `NCAR's Derecho <https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/`_ as an example:
+The following section includes information to install dependencies from scratch and uses `NCAR's Derecho <https://ncar-hpc-docs.readthedocs.io/en/latest/compute-systems/derecho/>`_ as an example:
 
 * Load base development environment
 
@@ -49,7 +49,7 @@ The following section includes information to install dependencies from scratch 
   $ spack env activate .
 
 .. note::
-  The **spack repo update builtin --commit [HASH]** command updates the `Spack packages <https://github.com/spack/spack-packages>`_ to their more recent version that includes **esmf@8.9.0**. The Spack package recipes can be found in the **~/.spack/package_repos** directory.
+  The *spack repo update builtin --commit [HASH]* command updates the `Spack packages <https://github.com/spack/spack-packages>`_ to their more recent version that includes *esmf@8.9.0*. The Spack package recipes can be found in the *~/.spack/package_repos* directory.
 
 * Install dependencies using Spack package manager
 
