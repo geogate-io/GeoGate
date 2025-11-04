@@ -1,13 +1,15 @@
-| Plugin            | Result  |
-| ----------------- | ------- |
-| ParaView/Catalyst | [![Test Catalyst Plugin with EGL](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml/badge.svg)](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml)    |
-| ParaView/Catalyst | [![Test Catalyst Plugin with OSMesa](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml/badge.svg)](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml) |
-
 ![geogate](https://github.com/user-attachments/assets/f0a728b0-3626-4f51-873b-822069702402)
 
 **GeoGate: A Universal Co-processing Framework for Earth System Models**
 
 GeoGate is an open source project that provides a generic way to interact with the existing ESMF/NUOPC based earth system models and applications. It can be used for defining one- or two-way data coupling and interactions through using its available plugins.
+
+[![DOI](https://zenodo.org/badge/722421256.svg)](https://doi.org/10.5281/zenodo.17526204)
+
+| Plugin            | Result  |
+| ----------------- | ------- |
+| ParaView/Catalyst | [![Test Catalyst Plugin with EGL](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml/badge.svg)](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_egl.yaml)    |
+| ParaView/Catalyst | [![Test Catalyst Plugin with OSMesa](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml/badge.svg)](https://github.com/geogate-io/GeoGate/actions/workflows/test_catalyst_osmesa.yaml) |
 
 Documentation
 =============
