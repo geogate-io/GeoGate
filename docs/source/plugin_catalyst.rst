@@ -1,4 +1,4 @@
-.. _PluginCatalyst:
+.. _plugin_catalyst:
 
 ****************
 Plugin: Catalyst
