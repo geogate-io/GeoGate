@@ -17,7 +17,7 @@ Catalyst plugin requires following third-party libraries/tools to function:
 - `ParaView <https://www.paraview.org>`_
 
 .. note::
-  All dependencies can be installed using Spack package manager. Please refer to Installation section for more detail.
+  All dependencies can be installed using `Spack <https://spack.io>`_ package manager. Please refer to Installation section for more detail.
 
 =============================================
 Building GeoGate with Catalyst Plugin Support
@@ -52,7 +52,7 @@ To specify the visualization or co-processing pipelines executed each time Catal
 
 This can be done in two-steps:
 
-1. The Catalyst plugin-enabled application can be run with the script to export available data in one of the supported VTK formats. For this purpose, the script (`catalyst_grid_writer.py <https://github.com/geogate-io/GeoGateApps/blob/main/PythonSendCatalystRecv/catalyst_grid_writer.py>`_) found in the GeoGateApps repository can be used. Once the application is run, the script writes the data flowing from each connected component to the disk in parallel. Then, the data can be used to create a visualization or co-processing pipeline by ParaView UI.
+**1.** The Catalyst plugin-enabled application can be run with the script to export available data in one of the supported VTK formats. For this purpose, the script (`catalyst_grid_writer.py <https://github.com/geogate-io/GeoGateApps/blob/main/PythonSendCatalystRecv/catalyst_grid_writer.py>`_) found in the GeoGateApps repository can be used. Once the application is run, the script writes the data flowing from each connected component to the disk in parallel. Then, the data can be used to create a visualization or co-processing pipeline by ParaView UI.
 
 .. note::
   The ``catalystChannelList`` options in the script can be modified to define a list of channels that will be written to the disk. The names of the channels are the same ones specified for each component in the ESMF run sequence. The ``frequency`` option is used to define the interval to write the data to disk, and it is set to 1 by default, which means the data will be written in each coupling interval.
@@ -60,7 +60,7 @@ This can be done in two-steps:
 .. note::
   Also, note that the configuration used to create VTK files needs to be the same as the target application that will use the ParaView UI-created Catalyst pipeline scripts.
 
-2. Once the data files are written, the desired Catalyst pipeline can be generated as usual by using the ParaView UI. Once the pipeline is finalized, the user needs to append extractor(s) at the end of each pipeline. Extractors can be created through the Extractors menu and allow you to extract and save data as meshes, images, or even tables. Once the pipeline is ready, use File > Save Catalyst State to export the state as a Python script, which can be supplied to the GeoGate through the use of the ``CatalystScript`` runtime configuration option.
+**2.** Once the data files are written, the desired Catalyst pipeline can be generated as usual by using the ParaView UI. Once the pipeline is finalized, the user needs to append extractor(s) at the end of each pipeline. Extractors can be created through the Extractors menu and allow you to extract and save data as meshes, images, or even tables. Once the pipeline is ready, use File > Save Catalyst State to export the state as a Python script, which can be supplied to the GeoGate through the use of the ``CatalystScript`` runtime configuration option.
 
 .. note::
   For more details see the `ParaView documentation <https://docs.paraview.org/en/v5.12.0/Catalyst/getting_started.html#generating-catalyst-scripts>`_ and specifically the `extractors section <https://docs.paraview.org/en/v5.12.0/UsersGuide/savingResults.html#sec-extractors>`_ in the ParaView User Guide.
