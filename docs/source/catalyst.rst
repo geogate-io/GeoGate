@@ -1,116 +1,74 @@
-.. _plugin_catalyst:
+.. _catalyst:
 
-****************
-Plugin: Catalyst
-****************
+********
+Catalyst
+********
 
-`Catalyst <https://catalyst-in-situ.readthedocs.io/en/latest/index.html>`_ is an API specification
-developed for simulations to analyze and visualize data in situ. The generic Catalyst plugin is 
-designed to provide in situ data visualization and processing capability to the fully coupled Earth 
-system modeling applications or individual model components that use `ESMF (Earth System Modeling Framework) 
-<https://earthsystemmodeling.org/doc/>`_ and `NUOPC (National Unified Operational Prediction Capability) 
-Layer <https://earthsystemmodeling.org/nuopc/>`_ .
+`Catalyst <https://catalyst-in-situ.readthedocs.io/en/latest/index.html>`_ is an API specification developed for simulations to analyze and visualize data in situ. The generic Catalyst plugin is designed to provide in situ data visualization and processing capability to the fully coupled Earth system modeling applications or individual model components that use `ESMF (Earth System Modeling Framework) <https://earthsystemmodeling.org/doc/>`_ and `NUOPC (National Unified Operational Prediction Capability) Layer <https://earthsystemmodeling.org/nuopc/>`_.
 
-=============
-Configuration
-=============
+========================================
+Plugin Specific Third-party Dependencies
+========================================
 
-=======================
-Installing Dependencies
-=======================
+Catalyst plugin requires following third-party libraries/tools to function:
 
-Chaining Existing Spack-stack installation
-------------------------------------------
-
-This section aims to give brief information to install additional dependencies to run GeoGate Catalyst
-plugin under `UFS (Unified Forecast System) Weather Model <https://ufs-weather-model.readthedocs.io/en/develop/#>`_
-through the use of `spack-stack <https://spack-stack.readthedocs.io/en/latest/>`_ package manager.
-
-Spack-stack is a framework for installing software libraries to support NOAA's Unified Forecast System (UFS)
-applications and the Joint Effort for Data assimilation Integration (JEDI) coupled to several Earth system 
-prediction models (MPAS, NEPTUNE, UM, FV3, GEOS, UFS). It is designed to leverage `Spack <https://spack.readthedocs.io/en/latest/>`_ 
-package manager to manage software dependencies in a more flexible way.
-
-Additional packages (and their dependencies) or new versions of packages can be installed by chaining existing
-Spack-stack installation on supported Tier I and II platforms. The list of preconfigured platforms can be seen in
-`spack-stack documentation <https://spack-stack.readthedocs.io/en/latest/PreConfiguredSites.html>`_.
-
-MSU Hercules
-------------
-
-Checkout spack-stack and create new environment by chaining exiting one:
-
-.. code-block:: console
-
-  git clone --recursive https://github.com/JCSDA/spack-stack.git spack-stack-1.9.2
-  cd spack-stack-1.9.2
-  git checkout spack-stack-1.9.2
-  git submodule update --init --recursive
-  . setup.sh
-  spack stack create env --name pv_osmesa_intel --template empty --site hercules --compiler intel --upstream /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/install
-  cd envs/pv_osmesa_intel
-  spack env activate .
-
-Copy `site/` and `common` directories from upstream installation to `envs/pv_osmesa_intel` directory.
-
-.. code-block:: console
-
-  cp -r /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/site .
-  cp -r /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/common .
-
-Update `spack.yaml` as following:
-
-.. code-block:: YAML 
-
-  spack:
-    concretizer:
-      unify: when_possible
-
-    config:
-      install_tree:
-        root: $env/install
-    modules:
-      default:
-        roots:
-          lmod: $env/install/modulefiles
-          tcl: $env/install/modulefiles
-
-    view: false
-    include:
-    - site
-    - common
-
-    specs:
-    - paraview@5.13.1+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl]
-      osmesa  %oneapi@2024.2.1
-      ^libcatalyst@2.0.0+fortran~ipo+python+conduit %oneapi@2024.2.1
-      ^conduit@0.9.2+fortran~ipo+python+mpi %oneapi@2024.2.1
-      ^mesa@23.3.6+glx+opengl~opengles+osmesa~strip+llvm %oneapi@2024.2.1
-      ^llvm %oneapi@2024.2.1
-    packages:
-      all:
-        prefer: ['%oneapi@2024.2.1']
-        target: [linux-rocky9-icelake]
-    upstreams:
-      spack-stack-1.9.2-ue-oneapi-2024.1.0:
-        install_tree: /apps/contrib/spack-stack/spack-stack-1.9.2/envs/ue-oneapi-2024.1.0/install
+- `Conduit Library <https://llnl-conduit.readthedocs.io/en/latest/>`_
+- `libcatalyst (>2.0) <https://catalyst-in-situ.readthedocs.io/en/latest/>`_
+- `ParaView <https://www.paraview.org>`_
 
 .. note::
-  The indentation needs to be aligned correctly based on the structure of the file.
+  All dependencies can be installed using Spack package manager. Please refer to Installation section for more detail.
 
-Then, following commands can be used to complate the installation of chained environment,
+=============================================
+Building GeoGate with Catalyst Plugin Support
+=============================================
 
-.. code-block:: console
+To build Catalyst plugin user needs to provide ``-DGEOGATE_USE_CATALYST=ON`` CMake option in build time. Otherwise, GeoGate will not build with Catalyst plugin support.
 
-  spack concretize --force --deprecated --reuse
-  spack install
-  spack module lmod refresh --upstream-modules
-  spack stack setup-meta-modules
+=============================
+Runtime Configuration Options
+=============================
+
+In GeoGate, each specific plugin has its own set of runtime configuration options. For Catalyst, users can provide the following options:
+
+- **CatalystConvertToCart:** This option allows for the conversion of latitude and longitude-based coordinates into Cartesian coordinates, specifically designed for global applications. This capability enables ParaView to visualize data on a spherical surface.
+
+- **CatalystScript:** This option allows users to provide a list of Catalyst Python scripts, which can either be generated by the ParaView Catalyst plugin or created manually. The list can be provided as a double-column-separated list like ``"scriptA.py:scriptB.py"``.
+
+In addition to the runtime configuration options, the executable needs to link to the ParaViewCatalyst library at runtime. To achieve this, we initialize ``CATALYST_IMPLEMENTATION_PATHS`` and ``CATALYST_IMPLEMENTATION_NAME`` to the path of the ParaViewCatalyst library and the name of the catalyst library implementation. Then, the catalyst scripts that are provided by the ``CatalystScript`` runtime configuration option can be applied to the data provided by the other components.
+
+- **CATALYST_IMPLEMENTATION_NAME:** If no implementation is named, a default implementation ``paraview`` is used.
+
+- **CATALYST_IMPLEMENTATION_PATHS:** The paths specified by the environment variable (using ``;`` as a separator on Windows and ``:`` otherwise) will be searched to find ParaView Catalyst library.
+
+.. note:: 
+  More information regarding ParaView Catalyst can be found in its documentation <https://catalyst-in-situ.readthedocs.io/en/latest/for_simulation_developers.html>`_.
+
+==============================================
+Creating Catalyst Python Script using ParaView
+==============================================
+
+To specify the visualization or co-processing pipelines executed each time Catalyst is triggered, user needs to provide Python script/s directly or generate one interactively through the ParaView UI.
+
+This can be done in two-steps:
+
+1. The Catalyst plugin-enabled application can be run with the script to export available data in one of the supported VTK formats. For this purpose, the script (`catalyst_grid_writer.py <https://github.com/geogate-io/GeoGateApps/blob/main/PythonSendCatalystRecv/catalyst_grid_writer.py>`_) found in the GeoGateApps repository can be used. Once the application is run, the script writes the data flowing from each connected component to the disk in parallel. Then, the data can be used to create a visualization or co-processing pipeline by ParaView UI.
 
 .. note::
-  The GNU installation can be also chained with the same approach.
+  The ``catalystChannelList`` options in the script can be modified to define a list of channels that will be written to the disk. The names of the channels are the same ones specified for each component in the ESMF run sequence. The ``frequency`` option is used to define the interval to write the data to disk, and it is set to 1 by default, which means the data will be written in each coupling interval.
 
-NCAR Derecho
-------------
+.. note::
+  Also, note that the configuration used to create VTK files needs to be the same as the target application that will use the ParaView UI-created Catalyst pipeline scripts.
 
+2. Once the data files are written, the desired Catalyst pipeline can be generated as usual by using the ParaView UI. Once the pipeline is finalized, the user needs to append extractor(s) at the end of each pipeline. Extractors can be created through the Extractors menu and allow you to extract and save data as meshes, images, or even tables. Once the pipeline is ready, use File > Save Catalyst State to export the state as a Python script, which can be supplied to the GeoGate through the use of the ``CatalystScript`` runtime configuration option.
 
+.. note::
+  For more details see the `ParaView documentation <https://docs.paraview.org/en/v5.12.0/Catalyst/getting_started.html#generating-catalyst-scripts>`_ and specifically the `extractors section <https://docs.paraview.org/en/v5.12.0/UsersGuide/savingResults.html#sec-extractors>`_ in the ParaView User Guide.
+
+===========
+Limitations
+===========
+
+The Catalyst plugin can process meshes in quad formats, which include regular lat-lon, curvilinear, and tricolor meshes, as well as tri formats, which refer to unstructured ocean models using triangular mesh construction, along with their combinations. Plans are in place to support higher-order meshes, such as hexagonal structures, in the future.
+
+Currently, the implementation only processes two-dimensional (2D) data. Efforts are underway to enable support for three-dimensional (3D) data from connected model components.
