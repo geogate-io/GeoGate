@@ -8,19 +8,20 @@ Python
 Plugin Specific Third-party Dependencies
 ========================================
 
-Python plugin requires following third-party libraries/tools to function:
+The Python plugin requires the following third-party libraries/tools to function:
 
 - `Conduit Library <https://llnl-conduit.readthedocs.io/en/latest/>`_
+
 - `Python <https://www.python.org>`_ and other third-party modules that will be used.
 
 .. note::
-  All dependencies can be installed using combination of `Spack <https://spack.io>`_ and Python (i.e., `pip <https://pip.pypa.io/en/stable/#>`_, `Conda <https://conda-forge.org>`_) package managers. Please refer to Installation section for more detail.
+  All dependencies can be installed using a combination of `Spack <https://spack.io>`_ and Python (i.e., `pip <https://pip.pypa.io/en/stable/#>`_, `Conda <https://conda-forge.org>`_) package managers.
 
 ===========================================
 Building GeoGate with Python Plugin Support
 ===========================================
 
-To build Catalyst plugin user needs to provide ``-DGEOGATE_USE_PYTHON=ON`` CMake option in build time. Otherwise, GeoGate will not build with Python plugin support.
+To build the Catalyst plugin, the user needs to provide the ``-DGEOGATE_USE_PYTHON=ON`` CMake option at build time. Otherwise, GeoGate will not build with Python plugin support.
 
 =============================
 Runtime Configuration Options
@@ -28,16 +29,16 @@ Runtime Configuration Options
 
 In GeoGate, each specific plugin comes with its own set of runtime configuration options. For the Python plugin, users can specify the following options:
 
-- **PythonScripts:** This option allows users to provide a list of Python scripts, which can be used to process or generate data. The list can be provided as a double-column-separated list like ``"scriptA.py:scriptB.py"``.
+- PythonScripts: This option allows users to provide a list of Python scripts, which can be used to process or generate data. The list can be provided as a double-column-separated list like ``"scriptA.py:scriptB.py"``.
 
 The GeoGate can create its own export state, which is the basic data object utilized by the ESMF library for exchanging data among model components. In this scenario, users must provide the following additional run-time configuration options.
 
 .. note::
   More information about the ESMF State class can be found in the `ESMF reference manual <https://earthsystemmodeling.org/docs/nightly/develop/ESMF_refdoc/node4.html#SECTION04070000000000000000>`_.
 
-- **ExportMeshFile:** This refers to the ESMF mesh file that will be utilized to create the underlying mesh for the ESMF fields attached to the ESMF export state.
+- ExportMeshFile: This refers to the ESMF mesh file that will be utilized to create the underlying mesh for the ESMF fields attached to the ESMF export state.
 
-- **ExportFields:** This refers to the list of export fields that will be created on the GeoGate export state. You can provide the list in one of two formats: as a double-column-separated list (e.g., "fieldA:fieldB") or as a YAML-formatted list (e.g., [fieldA, fieldB]), which is applicable if you are using ESMX as a driver component.
+- ExportFields: This refers to the list of export fields that will be created on the GeoGate export state. You can provide the list in one of two formats: as a double-column-separated list (e.g., "fieldA:fieldB") or as a YAML-formatted list (e.g., [fieldA, fieldB]), which is applicable if you are using ESMX as a driver component.
 
 .. note::
   ESMF supports a custom unstructured grid file format for describing meshes. This format is more compatible than the SCRIP format with the methods used to create an ESMF Mesh object, which reduces the amount of conversion required to create a Mesh. For more information about the format of the ESMF Mesh file, refer to the `ESMF reference documentation <https://earthsystemmodeling.org/docs/nightly/develop/ESMF_refdoc/node3.html#SECTION03028200000000000000>`_.
@@ -61,17 +62,115 @@ The ``my_node`` includes the following information in a hierarchical way:
 
 .. code-block:: json
 
-
 Export: Data produced by Python
 -------------------------------
 
-The Conduit node named ``my_node_return`` can be accessed from Python to provide data to GeoGate, and update the fields in the export state. In this case, the ``my_node_return['data/fields/fieldA/values']`` statement can be used to access the specific field found in the GeoGate export state.
+The Conduit node named `my_node_return` can be accessed from Python to provide data to GeoGate and update the fields in its export state. To access a specific field in the GeoGate export state, the following example statement ``my_node_return['data/fields/fieldA/values']`` can be used.
 
 .. note:
-  The name of the fields used in the ``my_node_return['data/fields/fieldA/values']`` statement needs to match with the field names given in the ``ExportFields`` runtime configuration option.
+  The name of the fields used in the ``my_node_return['data/fields/FIELD_NAME/values']`` statement needs to match with the field names given in the ``ExportFields`` runtime configuration option.
 
 ===========
 Limitations
 ===========
 
-Running Python script in parallel could be tricky.
+Running Python scripts in parallel can be challenging. To address this, users can allocate a single core in the runtime configuration file to the GeoGate component, which will facilitate the straightforward initiation of the Python script.
+
+The GeoGate component provides ``MPI_COMM_WORLD`` as the ``mpi/comm`` node, along with additional information such as the processor ID (``mpi/localpet``) and the total number of processors (``mpi/petcount``) utilized by the component. This information is accessible in both Fortran and Python through the ``my_node`` Conduit node, and users can access this data using the `mpi4py Python module <https://mpi4py.readthedocs.io/en/stable/>`_ for parallel data processing.
+
+At this time, GeoGate does not provide information about the decomposition used by the component. However, this information could be added to the ``my_node`` Conduit node if needed.
+
+======================
+Example Python Scripts
+======================
+
+To save Conduit nodes provided by the GeoGate, the following simple Python script can be used:
+
+.. code-block:: python
+
+  import conduit
+  from conduit import Node
+
+  # Arguments
+  channel = "atm"
+  debug = True
+
+  # Access to channel data
+  my_channel = my_node["channels/{}".format(channel)]
+
+  # Save the data in the channel
+  if debug:
+      my_channel.save('my_channel')
+
+.. note:
+  In this case, the script will just save the data found in the ``atm`` channel. To save data in all the channels, the user can write the ``channels`` node rather than ``channels/atm``.
+
+The following Python code can be used to read node data from a file:
+
+.. code-block:: python
+
+  from conduit import Node
+
+  # Arguments
+  channel = "atm"
+  data_dir = './data'
+
+  my_channel = Node()
+  my_channel.load(os.path.join(data_dir, 'my_channel_{}".format(channel)))
+
+The following example creates plots using data provided by the GeoGate:
+
+.. code-block:: python
+
+  import os
+  import conduit
+  from conduit import Node
+  import xarray as xr
+  import cartopy.crs as ccrs
+  import matplotlib as mpl
+  import matplotlib.pyplot as plt
+
+  # Arguments
+  channel = "ocn"
+  debug = True
+  nx_ocn = 1440
+  ny_ocn = 721
+
+  # Access to channel data
+  my_channel = my_node["channels/{}".format(channel)]
+
+  ds = xr.Dataset(
+      data_vars = {
+          "mask":  (["lat", "lon"], my_channel['data/mask/values/face_mask'].reshape((ny_ocn,nx_ocn))),
+          "So_t":  (["lat", "lon"], my_channel['data/fields/So_t/values'].reshape((ny_ocn,nx_ocn)))
+      },
+      coords = {
+          "lon": (["lat", "lon"], my_channel['data/coords/values/face_lon'].reshape((ny_ocn,nx_ocn))),
+          "lat": (["lat", "lon"], my_channel['data/coords/values/face_lat'].reshape((ny_ocn,nx_ocn))),
+      }
+  )
+
+  fig, axis = plt.subplots(1, 1, subplot_kw=dict(projection=ccrs.PlateCarree(central_longitude=0.0, globe=None)))
+
+  ds["So_t"].where(ds.mask == 0).plot(
+      ax=axis,
+      transform=ccrs.PlateCarree(),
+      cbar_kwargs={"orientation": "horizontal", "shrink": 0.7},
+      robust=True,
+  )
+
+  axis.coastlines()
+
+  fig, axis = plt.subplots(1, 1, subplot_kw=dict(projection=ccrs.Orthographic(-90, 30)))
+
+  ds["So_t"].where(ds.mask == 0).plot(
+      ax=axis,
+      transform=ccrs.PlateCarree(),
+      cbar_kwargs={"orientation": "horizontal", "shrink": 0.7},
+      robust=True,
+  )
+
+  axis.coastlines()
+
+.. note:
+  The GeoGate component utilizes a generic ESMF mesh representation to define its geometry and topology. As a result, the import and export fields within the component are stored in a one-dimensional array, or a two-dimensional array if dealing with three-dimensional fields. The variables ``nx_ocn`` and ``ny_ocn`` defined in the Python script are employed to convert the one-dimensional data provided by the GeoGate into their two-dimensional representation.
