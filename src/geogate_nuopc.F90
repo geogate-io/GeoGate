@@ -597,30 +597,33 @@ contains
        call ESMF_StateGet(is_local%wrap%NStateImp(n), itemCount=itemCount, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Allocate temporary data structures
-       allocate(itemNameList(itemCount))
-       allocate(itemTypeList(itemCount))
+       ! Check if any connected component
+       if (itemCount > 0) then
+          ! Allocate temporary data structures
+          allocate(itemNameList(itemCount))
+          allocate(itemTypeList(itemCount))
 
-       ! Query state
-       call ESMF_StateGet(is_local%wrap%NStateImp(n), nestedFlag=.false., itemNameList=itemNameList, itemTypeList=itemTypeList, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Query state
+          call ESMF_StateGet(is_local%wrap%NStateImp(n), nestedFlag=.false., itemNameList=itemNameList, itemTypeList=itemTypeList, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Loop over fields and realize them
-       do m = 1, itemCount
-          if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
-             ! Replace grid with mesh
-             call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Loop over fields and realize them
+          do m = 1, itemCount
+             if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
+                ! Replace grid with mesh
+                call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             ! Realize field
-             call NUOPC_Realize(is_local%wrap%NStateImp(n), fieldName=trim(itemNameList(m)), rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          end if
-       end do
+                ! Realize field
+                call NUOPC_Realize(is_local%wrap%NStateImp(n), fieldName=trim(itemNameList(m)), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             end if
+          end do
 
-       ! Clean memory
-       if (allocated(itemNameList)) deallocate(itemNameList)
-       if (allocated(itemTypeList)) deallocate(itemTypeList)
+          ! Clean memory
+          if (allocated(itemNameList)) deallocate(itemNameList)
+          if (allocated(itemTypeList)) deallocate(itemTypeList)
+       end if
     end do
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)

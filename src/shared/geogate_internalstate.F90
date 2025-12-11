@@ -126,7 +126,8 @@ module geogate_internalstate
        allocate(is_local%wrap%FBImp(nestedStateCount))
        allocate(is_local%wrap%NStateImp(nestedStateCount))
     else
-       call ESMF_LogWrite(trim(subname)//': There is no nested states or connection to COP component!', ESMF_LOGMSG_INFO)
+       is_local%wrap%numComp = 0
+       call ESMF_LogWrite(trim(subname)//': There is no nested states or connection to the component!', ESMF_LOGMSG_INFO)
     end if
 
     !------------------
