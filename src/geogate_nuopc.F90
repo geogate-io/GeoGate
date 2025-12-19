@@ -641,7 +641,6 @@ contains
     ! local variables
     integer :: n
     logical :: isPresent, isSet
-    type(ESMF_Mesh) :: mesh
     type(ESMF_Field) :: meshField
     type(InternalState) :: is_local
     character(len=ESMF_MAXSTR) :: mesh_file
@@ -674,7 +673,7 @@ contains
     ! Check number of export fields
     if (size(exportFieldNameList) > 0) then
        ! Create mesh from mesh file
-       mesh = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
+       is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Query for exportState
@@ -685,7 +684,7 @@ contains
        ! Assuming that all fields share the same grid/mesh
        do n = 1, size(exportFieldNameList)
           ! Create field on mesh
-          meshField = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R8, &
+          meshField = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
             meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 

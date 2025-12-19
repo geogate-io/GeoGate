@@ -7,9 +7,9 @@ module geogate_internalstate
   use ESMF, only: operator(==)
   use ESMF, only: ESMF_GridComp, ESMF_GridCompGetInternalState
   use ESMF, only: ESMF_State, ESMF_StateGet, ESMF_StateItem_Flag
-  use ESMF, only: ESMF_FieldBundle
+  use ESMF, only: ESMF_FieldBundle, ESMF_RouteHandle
   use ESMF, only: ESMF_UtilStringLowerCase, ESMF_LogWrite
-  use ESMF, only: ESMF_SUCCESS, ESMF_LOGMSG_INFO
+  use ESMF, only: ESMF_Mesh, ESMF_SUCCESS, ESMF_LOGMSG_INFO
   use ESMF, only: ESMF_STATEITEM_STATE, ESMF_MAXSTR
 
   use NUOPC, only: NUOPC_GetAttribute
@@ -30,8 +30,11 @@ module geogate_internalstate
      character(ESMF_MAXSTR), allocatable :: compName(:)
      type(ESMF_State), pointer :: NStateImp(:)
      type(ESMF_FieldBundle), pointer :: FBImp(:)
+     type(ESMF_FieldBundle), pointer :: FBImpIntp(:)
      type(ESMF_State) :: NStateExp
      type(ESMF_FieldBundle) :: FBExp
+     type(ESMF_Mesh) :: meshExp
+     type(ESMF_RouteHandle), pointer :: RHImp2Exp(:)
   end type InternalStateStruct
 
   !-----------------------------------------------------------------------------
@@ -125,6 +128,8 @@ module geogate_internalstate
        allocate(is_local%wrap%compName(nestedStateCount))
        allocate(is_local%wrap%FBImp(nestedStateCount))
        allocate(is_local%wrap%NStateImp(nestedStateCount))
+       allocate(is_local%wrap%FBImpIntp(nestedStateCount))
+       allocate(is_local%wrap%RHImp2Exp(nestedStateCount))
     else
        is_local%wrap%numComp = 0
        call ESMF_LogWrite(trim(subname)//': There is no nested states or connection to the component!', ESMF_LOGMSG_INFO)
