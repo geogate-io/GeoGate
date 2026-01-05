@@ -38,7 +38,7 @@ module geogate_nuopc
   use NUOPC, only: NUOPC_CompFilterPhaseMap, NUOPC_CompSetEntryPoint
   use NUOPC, only: NUOPC_SetAttribute, NUOPC_GetAttribute
   use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_CompAttributeSet
-  use NUOPC, only: NUOPC_CompCheckSetClock
+  use NUOPC, only: NUOPC_CompCheckSetClock, NUOPC_SetTimestamp
   use NUOPC, only: NUOPC_Advertise
   use NUOPC, only: NUOPC_Realize
   use NUOPC, only: NUOPC_FieldDictionarySetAutoAdd, NUOPC_AddNamespace
@@ -715,6 +715,9 @@ contains
     ! local variables
     integer :: n
     type(InternalState) :: is_local
+    type(ESMF_Field) :: field
+    type(ESMF_Clock) :: modelClock
+    type(ESMF_Time) :: currTime
     logical :: isPresent, isSet
     logical, save :: first_call = .true.
     character(len=255) :: cvalue
@@ -749,6 +752,27 @@ contains
 
        ! Return
        return
+    end if
+
+    ! Loop over fields in export state and and initialize their time stamps
+    if (size(exportFieldNameList) > 0) then
+       ! Query component
+       call NUOPC_ModelGet(gcomp, modelClock=modelClock, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Query clock
+       call ESMF_ClockGet(modelClock, currTime=currTime, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       do n = 1, size(exportFieldNameList)
+          ! Query field
+          call ESMF_StateGet(is_local%wrap%NStateExp, field=field, itemName=exportFieldNameList(n), rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Set the TimeStamp according to time
+          call NUOPC_SetTimestamp(field, currTime, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
     end if
 
     ! Set InitializeDataComplete Component Attribute to "true", indicating
