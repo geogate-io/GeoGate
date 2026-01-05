@@ -8,12 +8,17 @@ module geogate_share
   use ESMF, only: ESMF_LogFoundError, ESMF_FAILURE, ESMF_LogWrite
   use ESMF, only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_INFO, ESMF_SUCCESS
   use ESMF, only: ESMF_GeomType_Flag, ESMF_State, ESMF_StateGet
-  use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldCreate
+  use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldCreate, ESMF_FieldFill
   use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleCreate, ESMF_FieldBundleAdd
   use ESMF, only: ESMF_AttributeGet, ESMF_Mesh, ESMF_MeshLoc
   use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_INDEX_DELOCAL, ESMF_MAXSTR, ESMF_KIND_R8
-  use ESMF, only: ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
+  use ESMF, only: ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH, ESMF_TYPEKIND_R8
   use ESMF, only: ESMF_StateGet, ESMF_StateItem_Flag, ESMF_STATEITEM_STATE
+  use ESMF, only: ESMF_MeshLoc, ESMF_RouteHandle, ESMF_RouteHandleIsCreated
+  use ESMF, only: ESMF_FieldBundleIsCreated, ESMF_FieldBundleGet
+  use ESMF, only: ESMF_FieldBundleRegridStore, ESMF_FieldBundleRegrid
+  use ESMF, only: ESMF_REGRIDMETHOD_BILINEAR, ESMF_POLEMETHOD_ALLAVG, ESMF_UNMAPPEDACTION_IGNORE
+  use ESMF, only: ESMF_REGION_SELECT, ESMF_TERMORDER_SRCSEQ
 
   use NUOPC, only: NUOPC_GetAttribute
 
@@ -26,6 +31,7 @@ module geogate_share
 
   public :: ChkErr
   public :: StringSplit
+  public :: FB_copy
   public :: FB_init_pointer
 
   !-----------------------------------------------------------------------------
@@ -43,6 +49,7 @@ module geogate_share
   ! Private module data
   !-----------------------------------------------------------------------------
 
+  type(ESMF_RouteHandle) :: routeHandle
   character(*), parameter :: modName =  "(geogate_share)" 
   character(len=*), parameter :: u_FILE_u = __FILE__ 
 
@@ -229,5 +236,85 @@ module geogate_share
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine FB_init_pointer
+
+  !-----------------------------------------------------------------------------
+
+  subroutine FB_copy(FBin, FBout, name, mesh, rh, rc)
+
+    ! input/output variables
+    type(ESMF_FieldBundle), intent(in) :: FBin
+    type(ESMF_FieldBundle), intent(inout) :: FBout
+    character(len=*), intent(in) :: name
+    type(ESMF_Mesh), intent(in) :: mesh
+    type(ESMF_RouteHandle), intent(inout) :: rh
+    integer, intent(out), optional :: rc
+
+    ! local variables
+    integer :: n, fieldCount
+    type(ESMF_MeshLoc) :: meshloc
+    type(ESMF_Field) :: fldSrc, fldDst
+    integer :: srcTermProcessing = 0
+    character(ESMF_MAXSTR), pointer :: fieldNameList(:)
+    character(len=*), parameter :: subname = trim(modName)//':(FB_copy) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Check FBout is created or not
+    if (.not. ESMF_FieldBundleIsCreated(FBout, rc=rc)) then
+       ! Create empty field bundle, FBout
+       FBout = ESMF_FieldBundleCreate(name=trim(name), rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       ! Determine number of fields in field bundle and allocate memory for fieldNameList
+       call ESMF_FieldBundleGet(FBin, fieldCount=fieldCount, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       allocate(fieldNameList(fieldCount))
+
+       ! Get the fields in the field bundle
+       call ESMF_FieldBundleGet(FBin, fieldNameList=fieldNameList, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       ! Loop over fields in the bundle and create FBout
+       do n = 1, fieldCount
+          ! Get source field
+          call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=fldSrc, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          call ESMF_FieldGet(fldSrc, meshloc=meshloc, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          ! Create destination field
+          fldDst = ESMF_FieldCreate(mesh, ESMF_TYPEKIND_R8, meshloc=meshloc, name=trim(fieldNameList(n)), rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          !Initialize field
+          call ESMF_FieldFill(fldDst, dataFillScheme="const", const1=fillValue, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          ! Add field to FBout
+          call ESMF_FieldBundleAdd(FBout, (/ fldDst /), rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+       end do
+    end if
+
+    ! Create routehandle for interpolation
+    if (.not. ESMF_RouteHandleIsCreated(rh)) then
+       call ESMF_FieldBundleRegridStore(FBin, FBout, regridmethod=ESMF_REGRIDMETHOD_BILINEAR, &
+         polemethod=ESMF_POLEMETHOD_ALLAVG, srcTermProcessing=srcTermProcessing, &
+         ignoreDegenerate=.true., unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, routehandle=rh, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    ! Perform interpolation
+    call ESMF_FieldBundleRegrid(FBin, FBout, rh, zeroregion=ESMF_REGION_SELECT, &
+      termorderflag=(/ ESMF_TERMORDER_SRCSEQ /), rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine FB_copy
 
 end module geogate_share

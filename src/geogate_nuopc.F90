@@ -597,30 +597,33 @@ contains
        call ESMF_StateGet(is_local%wrap%NStateImp(n), itemCount=itemCount, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Allocate temporary data structures
-       allocate(itemNameList(itemCount))
-       allocate(itemTypeList(itemCount))
+       ! Check if any connected component
+       if (itemCount > 0) then
+          ! Allocate temporary data structures
+          allocate(itemNameList(itemCount))
+          allocate(itemTypeList(itemCount))
 
-       ! Query state
-       call ESMF_StateGet(is_local%wrap%NStateImp(n), nestedFlag=.false., itemNameList=itemNameList, itemTypeList=itemTypeList, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Query state
+          call ESMF_StateGet(is_local%wrap%NStateImp(n), nestedFlag=.false., itemNameList=itemNameList, itemTypeList=itemTypeList, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Loop over fields and realize them
-       do m = 1, itemCount
-          if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
-             ! Replace grid with mesh
-             call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Loop over fields and realize them
+          do m = 1, itemCount
+             if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
+                ! Replace grid with mesh
+                call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             ! Realize field
-             call NUOPC_Realize(is_local%wrap%NStateImp(n), fieldName=trim(itemNameList(m)), rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          end if
-       end do
+                ! Realize field
+                call NUOPC_Realize(is_local%wrap%NStateImp(n), fieldName=trim(itemNameList(m)), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             end if
+          end do
 
-       ! Clean memory
-       if (allocated(itemNameList)) deallocate(itemNameList)
-       if (allocated(itemTypeList)) deallocate(itemTypeList)
+          ! Clean memory
+          if (allocated(itemNameList)) deallocate(itemNameList)
+          if (allocated(itemTypeList)) deallocate(itemTypeList)
+       end if
     end do
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
@@ -638,7 +641,6 @@ contains
     ! local variables
     integer :: n
     logical :: isPresent, isSet
-    type(ESMF_Mesh) :: mesh
     type(ESMF_Field) :: meshField
     type(InternalState) :: is_local
     character(len=ESMF_MAXSTR) :: mesh_file
@@ -671,7 +673,7 @@ contains
     ! Check number of export fields
     if (size(exportFieldNameList) > 0) then
        ! Create mesh from mesh file
-       mesh = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
+       is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Query for exportState
@@ -682,7 +684,7 @@ contains
        ! Assuming that all fields share the same grid/mesh
        do n = 1, size(exportFieldNameList)
           ! Create field on mesh
-          meshField = ESMF_FieldCreate(mesh, typekind=ESMF_TYPEKIND_R8, &
+          meshField = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
             meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 

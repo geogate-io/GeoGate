@@ -24,7 +24,7 @@ module geogate_phases_python
   use, intrinsic :: iso_c_binding, only : C_PTR
   use, intrinsic :: iso_c_binding, only : c_associated
 
-  use geogate_share, only: ChkErr, StringSplit, debugMode
+  use geogate_share, only: ChkErr, StringSplit, debugMode, FB_copy
   use geogate_types, only: IngestMeshData, meshType
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
@@ -74,6 +74,7 @@ contains
     type(ESMF_Clock) :: clock
     type(ESMF_VM) :: vm
     integer, save :: timeStep = 0
+    logical :: impOnExpMesh
     character(ESMF_MAXSTR) :: namespace
     character(ESMF_MAXSTR) :: cvalue, message, timeStr
     character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_run) '
@@ -119,6 +120,17 @@ contains
           end do
        endif
 
+       ! Get option to interpolate import fields to export mesh
+       call NUOPC_CompAttributeGet(gcomp, name='ImportOnExportMesh', value=cvalue, &
+         isPresent=isPresent, isSet=isSet, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+       impOnExpMesh = .false.
+       if (isPresent .and. isSet) then
+          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') impOnExpMesh = .true.
+       end if
+       write(message, fmt='(A,L)') trim(subname)//' : ImportOnExportMesh = ', impOnExpMesh
+       call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+
        ! Set flag
        first_time = .false.
     end if
@@ -145,6 +157,18 @@ contains
           ! Load content of FB to Conduit node
           call FB2Node(is_local%wrap%FBImp(n), "import", trim(is_local%wrap%compName(n)), myMeshImp(n), node, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Interpolate import fields to export mesh and add them to node
+          if (impOnExpMesh) then
+             ! Interpolate import fields to export mesh and create new FB
+             call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
+               'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
+               is_local%wrap%meshExp, is_local%wrap%RHImp2Exp(n), rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             ! Load content of FB to Conduit node
+             call FB2Node(is_local%wrap%FBImpIntp(n), "import_on_export_grid", &
+               trim(is_local%wrap%compName(n)), myMeshExp, node, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
        end do
     end if
 
@@ -222,7 +246,6 @@ contains
     real(ESMF_KIND_R8), pointer :: farrayPtr(:)
     type(ESMF_Mesh) :: fmesh
     type(ESMF_Field) :: field
-    type(ESMF_Info) :: info
     character(ESMF_MAXSTR), allocatable :: fieldNameList(:)
     character(len=*), parameter :: subname = trim(modName)//':(FB2Node) '
     !---------------------------------------------------------------------------
@@ -247,10 +270,6 @@ contains
        ! Query field
        call ESMF_FieldBundleGet(FBin, fieldName=trim(fieldNameList(n)), field=field, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
-
-       ! Query dimension information
-       call ESMF_InfoGetFromHost(field, info, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Query coordinate information from first field
        if (n == 1) then
