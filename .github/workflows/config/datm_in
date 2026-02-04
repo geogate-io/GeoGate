@@ -10,5 +10,5 @@
   nx_global = 1440
   ny_global = 721
   restfilm = "null"
-  export_all = .true.
+  export_all = .false.
 /
