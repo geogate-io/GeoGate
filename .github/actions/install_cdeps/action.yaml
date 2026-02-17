@@ -24,7 +24,7 @@ runs:
       repository: ESCOMP/CDEPS
       path: ${{ inputs.install_dir }}/cdeps
       submodules: true
-      ref: cdeps1.0.83
+      ref: cdeps1.0.87
 
   - name: Install CDEPS
     run: |
