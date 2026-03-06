@@ -6,37 +6,60 @@
 #include "python_interpreter.hpp"
 
 // single python interp instance for our example.
-PythonInterpreter *interp = NULL;
+static PythonInterpreter *interp = NULL;
+static bool interp_initialized = false;
+static bool interp_init_failed = false;
 
 extern "C" {
 
   //----------------------------------------------------------------------------
   // returns our static instance of our python interpreter
   // if not already inited initializes it
+  // Uses cached flags to avoid overhead on subsequent calls
   //----------------------------------------------------------------------------
 
   PythonInterpreter *init_python_interpreter() 
   {
-      if( interp == NULL)
-      {
+      // Fast path: return immediately if already initialized
+      if (interp_initialized) {
+          return interp;
+      }
+
+      // Return NULL immediately if initialization previously failed
+      if (interp_init_failed) {
+          return NULL;
+      }
+
+      // First-time initialization
+      if (interp == NULL) {
           interp = new PythonInterpreter();
-          if( !interp->initialize() )
-          {
-              std::cout << "ERROR: interp->initialize() failed " << std::endl;
-             return NULL;
-          }
-          // setup for conduit python c api
-          if(!interp->run_script("import conduit"))
-          {
-              std::cout << "ERROR: `import conduit` failed" << std::endl;
-             return NULL;
+          if (!interp->initialize()) {
+              std::cout << "ERROR: interp->initialize() failed" << std::endl;
+              interp_init_failed = true;
+              delete interp;
+              interp = NULL;
+              return NULL;
           }
 
-          if(import_conduit() < 0)
-          {
-             std::cout << "failed to import Conduit Python C-API";
-             return NULL;
+          // Setup for conduit python c api (only done once)
+          if (!interp->run_script("import conduit")) {
+              std::cout << "ERROR: `import conduit` failed" << std::endl;
+              interp_init_failed = true;
+              delete interp;
+              interp = NULL;
+              return NULL;
           }
+
+          if (import_conduit() < 0) {
+              std::cout << "ERROR: failed to import Conduit Python C-API" << std::endl;
+              interp_init_failed = true;
+              delete interp;
+              interp = NULL;
+              return NULL;
+          }
+
+          // Mark as successfully initialized
+          interp_initialized = true;
 
           // Turn this on if you want to see every line
           // the python interpreter executes
@@ -46,12 +69,29 @@ extern "C" {
   }
 
   //----------------------------------------------------------------------------
+  // Inline helper to get interpreter with minimal overhead
+  // This avoids function call when already initialized
+  //----------------------------------------------------------------------------
+  inline PythonInterpreter *get_interpreter() {
+      // Fast path: if already initialized, return directly without function call
+      if (interp_initialized) {
+          return interp;
+      }
+      // Slow path: needs initialization
+      return init_python_interpreter();
+  }
+
+  //----------------------------------------------------------------------------
   // access node passed from fortran to python
   //----------------------------------------------------------------------------
 
   void conduit_fort_to_py(conduit_node *data, const char *py_script) {
-    // create python interpreter
-    PythonInterpreter *pyintp = init_python_interpreter();
+    // Get python interpreter (fast path if already initialized)
+    PythonInterpreter *pyintp = get_interpreter();
+    if (!pyintp) {
+        std::cout << "ERROR: Failed to get Python interpreter" << std::endl;
+        return;
+    }
 
     // add extra system paths
     // pyintp->add_system_path("/usr/local/lib/python3.9/site-packages");
@@ -81,8 +121,12 @@ extern "C" {
   }
 
   conduit_node* conduit_fort_from_py(const char *py_script) {
-    // create python interpreter
-    PythonInterpreter *pyintp = init_python_interpreter();
+    // Get python interpreter (fast path if already initialized)
+    PythonInterpreter *pyintp = get_interpreter();
+    if (!pyintp) {
+        std::cout << "ERROR: Failed to get Python interpreter" << std::endl;
+        return NULL;
+    }
 
     // trigger script
     bool err = pyintp->run_script_file(py_script);
@@ -105,8 +149,12 @@ extern "C" {
   }
 
   conduit_node* conduit_fort_to_py_to_fort(conduit_node *data, const char *py_script) {
-    // create python interpreter
-    PythonInterpreter *pyintp = init_python_interpreter();
+    // Get python interpreter (fast path if already initialized)
+    PythonInterpreter *pyintp = get_interpreter();
+    if (!pyintp) {
+        std::cout << "ERROR: Failed to get Python interpreter" << std::endl;
+        return NULL;
+    }
 
     // get global dict and insert wrapped conduit node
     PyObject *py_mod_dict =  pyintp->global_dict();
