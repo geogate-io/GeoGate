@@ -58,6 +58,8 @@
 /// Simple C++ Embeddable Python Interpreter.
 ///
 /// ADAPTED FROM https://github.com/Alpine-DAV/ascent/tree/develop/src/flow
+///
+/// OPTIMIZED: Python 3 only (Python 2 EOL), modernized C++ style
 //-----------------------------------------------------------------------------
 
 #ifndef PYTHON_INTERPRETER_HPP
@@ -66,75 +68,83 @@
 #include <Python.h>
 #include <string>
 
+/// Python 3 interpreter wrapper with optimized error handling
 class PythonInterpreter
 {
 public:
-                 PythonInterpreter();
+                 PythonInterpreter() noexcept;
     virtual     ~PythonInterpreter();
 
-    /// instance lifetime control
-    bool         initialize(int argc=0, char **argv=NULL);
+    /// Instance lifetime control
+    bool         initialize(int argc=0, char **argv=nullptr);
 
-    bool         is_running() { return m_running; }
+    /// Check if interpreter is running
+    bool         is_running() const noexcept { return m_running; }
 
-    /// Note: blows away everything in the main dict
-    /// use with caution!
+    /// Reset the interpreter state (clears main dict)
+    /// Note: Use with caution!
     void         reset();
-    void         shutdown();
 
-    /// echo (default = false)
-    ///  when enabled, controls if contents of execd python 
-    //   scripts are echoed to conduit info
-    bool         echo_enabled() const { return m_echo; }
-    /// change echo setting
-    void         set_echo(bool value) { m_echo = value; }
+    /// Shutdown the interpreter
+    void         shutdown() noexcept;
 
+    /// Echo mode (default = false)
+    /// When enabled, prints executed Python script contents to conduit info
+    bool         echo_enabled() const noexcept { return m_echo; }
+
+    /// Change echo setting
+    void         set_echo(bool value) noexcept { m_echo = value; }
+
+    /// Set Python program name
     void         set_program_name(const char *name);
+
+    /// Set Python sys.argv
     void         set_argv(int argc, char **argv);
 
-    /// helper to add a system path to access new modules
+    /// Add a system path to access new modules
     bool         add_system_path(const std::string &path);
 
-    /// script exec
+    /// Execute Python script string
     bool         run_script(const std::string &script);
+
+    /// Execute Python script from file
     bool         run_script_file(const std::string &fname);
-    
-    /// script exec in specific dict
-    bool         run_script(const std::string &script,
-                            PyObject *py_dict);
-    bool         run_script_file(const std::string &fname,
-                                 PyObject *py_dict);
 
-    /// set into global dict
-    bool         set_global_object(PyObject *py_obj,
-                                   const std::string &name);
-    /// fetch from global dict, returns borrowed reference
+    /// Execute Python script in specific dictionary
+    bool         run_script(const std::string &script, PyObject *py_dict);
+
+    /// Execute Python script file in specific dictionary
+    bool         run_script_file(const std::string &fname, PyObject *py_dict);
+
+    /// Set object into global dictionary
+    bool         set_global_object(PyObject *py_obj, const std::string &name);
+
+    /// Get object from global dictionary (returns borrowed reference)
     PyObject    *get_global_object(const std::string &name);
-    /// access global dict object
-    PyObject    *global_dict() { return m_py_global_dict; }
 
-    /// set into given dict
-    bool         set_dict_object(PyObject *py_dict,
-                                 PyObject *py_obj,
-                                 const std::string &name);
-    /// fetch from given dict, returns borrowed reference
-    PyObject    *get_dict_object(PyObject *py_dict, 
-                                 const std::string &name);
+    /// Access global dictionary object
+    PyObject    *global_dict() const noexcept { return m_py_global_dict; }
 
-    /// error checking
+    /// Set object into given dictionary
+    bool         set_dict_object(PyObject *py_dict, PyObject *py_obj, const std::string &name);
+
+    /// Get object from given dictionary (returns borrowed reference)
+    PyObject    *get_dict_object(PyObject *py_dict, const std::string &name);
+
+    /// Error checking and handling
     bool         check_error();
-    void         clear_error();
-    std::string  error_message() const { return m_error_msg; }
+    void         clear_error() noexcept;
+    std::string  error_message() const noexcept { return m_error_msg; }
+    bool         has_error() const noexcept { return m_error; }
 
-    /// helpers to obtain values from basic objects
-    static bool  PyObject_to_double(PyObject *py_obj,
-                                    double &res);
+    /// Static helper: Convert PyObject to double
+    static bool  PyObject_to_double(PyObject *py_obj, double &res);
 
-    static bool  PyObject_to_string(PyObject *py_obj,
-                                    std::string &res);
+    /// Static helper: Convert PyObject to string
+    static bool  PyObject_to_string(PyObject *py_obj, std::string &res);
 
-    static bool  PyObject_to_int(PyObject *py_obj,
-                                 int &res);
+    /// Static helper: Convert PyObject to int
+    static bool  PyObject_to_int(PyObject *py_obj, int &res);
 
 private:
     bool         PyTraceback_to_string(PyObject *py_etype,
@@ -151,14 +161,10 @@ private:
     PyObject    *m_py_main_module;
     PyObject    *m_py_global_dict;
 
-    PyObject    *m_py_trace_module;
-    PyObject    *m_py_sio_module;
     PyObject    *m_py_trace_print_exception_func;
     PyObject    *m_py_sio_class;
 
 };
-
-
 
 #endif
 //-----------------------------------------------------------------------------
