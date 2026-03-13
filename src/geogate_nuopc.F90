@@ -26,7 +26,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_Time, ESMF_TimeGet, ESMF_TimeInterval
   use ESMF, only: ESMF_Clock, ESMF_ClockGet, ESMF_ClockSet
   use ESMF, only: ESMF_Info, ESMF_InfoGetFromHost, ESMF_InfoSet
-  use ESMF, only: ESMF_UtilStringLowerCase
+  use ESMF, only: ESMF_UtilStringLowerCase, ESMF_LOGMSG_WARNING
   use ESMF, only: ESMF_DistGridGet, ESMF_DistGridConnection
   use ESMF, only: ESMF_FieldCreate, ESMF_StateIsCreated
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
@@ -651,12 +651,14 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
-    ! Get the internal state
-    nullify(is_local%wrap)
-    call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    ! Return if list of export fields is not available
+    if (.not. allocated(exportFieldNameList)) then
+       call ESMF_LogWrite(trim(subname)//": ExportFields is not provided by the configuration", &
+         ESMF_LOGMSG_WARNING)
+       return
+    end if 
 
-    ! Query for ESMF mesh file for export fields
+    ! Return if ESMF mesh file for export fields is not given
     mesh_file = ""
     call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
       isPresent=isPresent, isSet=isSet, rc=rc)
@@ -666,11 +668,16 @@ contains
        call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
     else
        call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields. "// &
-          "Skip adding fields to export state!", ESMF_LOGMSG_INFO)
+          "Skip adding fields to export state!", ESMF_LOGMSG_WARNING)
        return
     endif
 
-    ! Check number of export fields
+    ! Get the internal state
+    nullify(is_local%wrap)
+    call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Check if export fields are requested
     if (size(exportFieldNameList) > 0) then
        ! Create mesh from mesh file
        is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
@@ -757,7 +764,7 @@ contains
     end if
 
     ! Loop over fields in export state and and initialize their time stamps
-    if (size(exportFieldNameList) > 0) then
+    if (allocated(exportFieldNameList)) then
        ! Query component
        call NUOPC_ModelGet(gcomp, modelClock=modelClock, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
