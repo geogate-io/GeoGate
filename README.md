@@ -1,4 +1,5 @@
 **GeoGate: A Universal Co-processing Framework for Earth System Models**
+========================================================================
 
 GeoGate is an open source project that provides a generic way to interact with the existing ESMF/NUOPC based earth system models and applications. It can be used for defining one- or two-way data coupling and interactions through using its available plugins.
 
