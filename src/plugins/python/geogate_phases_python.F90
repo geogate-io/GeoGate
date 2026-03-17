@@ -16,6 +16,7 @@ module geogate_phases_python
   use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMBarrier, ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_MAXSTR, ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
   use ESMF, only: ESMF_UtilStringLowerCase, ESMF_FieldBundleIsCreated
+  use ESMF, only: ESMF_TraceRegionEnter, ESMF_TraceRegionExit
 
   use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_GetAttribute
   use NUOPC_Model, only: NUOPC_ModelGet
@@ -83,6 +84,9 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Enter trace region
+    call ESMF_TraceRegionEnter(trim(subname))
+
     ! Get internal state
     nullify(is_local%wrap)
     call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
@@ -148,6 +152,7 @@ contains
     call conduit_node_set_path_int32(node, "mpi/petcount", petCount)
 
     ! Add import data to node
+    call ESMF_TraceRegionEnter(trim(subname)//' import --> node')
     if (is_local%wrap%numComp > 0) then
        ! Allocate myMesh for import
        if (.not. allocated(myMeshImp)) allocate(myMeshImp(is_local%wrap%numComp))
@@ -171,6 +176,7 @@ contains
           end if
        end do
     end if
+    call ESMF_TraceRegionExit(trim(subname)//' import --> node')
 
     ! Query name space from export state
     call NUOPC_GetAttribute(is_local%wrap%NStateExp, name="Namespace", value=namespace, rc=rc)
@@ -179,29 +185,37 @@ contains
 
     ! Check export state
     if (ESMF_FieldBundleIsCreated(is_local%wrap%FBExp)) then
+       call ESMF_TraceRegionEnter(trim(subname)//' export --> node')
        ! Add export data to node
        call FB2Node(is_local%wrap%FBExp, "export", trim(namespace), myMeshExp, node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_TraceRegionExit(trim(subname)//' export --> node')
 
        ! Loop over scripts
        do n = 1, size(scriptNames, dim=1)
           ! Pass node to Python
+          call ESMF_TraceRegionEnter(trim(subname)//' run script with export')
           nodeOut = conduit_fort_to_py_to_fort(node, trim(scriptNames(n))//char(0))
+          call ESMF_TraceRegionExit(trim(subname)//' run script with export')
 
           ! Update export fields
+          call ESMF_TraceRegionEnter(trim(subname)//' node --> export')
           if (c_associated(nodeOut)) then
              call Node2FB(is_local%wrap%FBExp, namespace, nodeOut, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
           else
              call ESMF_LogWrite(subname//' Nothing returned from Python!', ESMF_LOGMSG_INFO)
           end if
+          call ESMF_TraceRegionExit(trim(subname)//' node --> export')
        end do
     else
        ! Loop over scripts
+       call ESMF_TraceRegionEnter(trim(subname)//' run script without export')
        do n = 1, size(scriptNames, dim=1)
           ! Pass node to Python
           call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
        end do
+       call ESMF_TraceRegionExit(trim(subname)//' run script without export')
     end if
 
     ! Info related to input node 
@@ -222,6 +236,9 @@ contains
 
     ! Increase time step
     timeStep = timeStep+1
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit(trim(subname))
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
