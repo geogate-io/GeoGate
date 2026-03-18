@@ -152,7 +152,7 @@ contains
     call conduit_node_set_path_int32(node, "mpi/petcount", petCount)
 
     ! Add import data to node
-    call ESMF_TraceRegionEnter(trim(subname)//' import --> node')
+    call ESMF_TraceRegionEnter(trim(subname)//' FB2Node:import')
     if (is_local%wrap%numComp > 0) then
        ! Allocate myMesh for import
        if (.not. allocated(myMeshImp)) allocate(myMeshImp(is_local%wrap%numComp))
@@ -164,6 +164,7 @@ contains
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           ! Interpolate import fields to export mesh and add them to node
           if (impOnExpMesh) then
+             call ESMF_TraceRegionEnter(trim(subname)//' FB2Node:import:interp2export')
              ! Interpolate import fields to export mesh and create new FB
              call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
                'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
@@ -173,10 +174,11 @@ contains
              call FB2Node(is_local%wrap%FBImpIntp(n), "import_on_export_grid", &
                trim(is_local%wrap%compName(n)), myMeshExp, node, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             call ESMF_TraceRegionExit(trim(subname)//' FB2Node:import:interp2export')
           end if
        end do
     end if
-    call ESMF_TraceRegionExit(trim(subname)//' import --> node')
+    call ESMF_TraceRegionExit(trim(subname)//' FB2Node:import')
 
     ! Query name space from export state
     call NUOPC_GetAttribute(is_local%wrap%NStateExp, name="Namespace", value=namespace, rc=rc)
@@ -185,37 +187,37 @@ contains
 
     ! Check export state
     if (ESMF_FieldBundleIsCreated(is_local%wrap%FBExp)) then
-       call ESMF_TraceRegionEnter(trim(subname)//' export --> node')
+       call ESMF_TraceRegionEnter(trim(subname)//' FB2Node:export')
        ! Add export data to node
        call FB2Node(is_local%wrap%FBExp, "export", trim(namespace), myMeshExp, node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       call ESMF_TraceRegionExit(trim(subname)//' export --> node')
+       call ESMF_TraceRegionExit(trim(subname)//' FB2Node:export')
 
        ! Loop over scripts
        do n = 1, size(scriptNames, dim=1)
           ! Pass node to Python
-          call ESMF_TraceRegionEnter(trim(subname)//' run script with export')
+          call ESMF_TraceRegionEnter(trim(subname)//' conduit_fort_to_py_to_fort')
           nodeOut = conduit_fort_to_py_to_fort(node, trim(scriptNames(n))//char(0))
-          call ESMF_TraceRegionExit(trim(subname)//' run script with export')
+          call ESMF_TraceRegionExit(trim(subname)//' conduit_fort_to_py_to_fort')
 
           ! Update export fields
-          call ESMF_TraceRegionEnter(trim(subname)//' node --> export')
+          call ESMF_TraceRegionEnter(trim(subname)//' Node2FB:export')
           if (c_associated(nodeOut)) then
              call Node2FB(is_local%wrap%FBExp, namespace, nodeOut, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
           else
              call ESMF_LogWrite(subname//' Nothing returned from Python!', ESMF_LOGMSG_INFO)
           end if
-          call ESMF_TraceRegionExit(trim(subname)//' node --> export')
+          call ESMF_TraceRegionExit(trim(subname)//' Node2FB:export')
        end do
     else
        ! Loop over scripts
-       call ESMF_TraceRegionEnter(trim(subname)//' run script without export')
+       call ESMF_TraceRegionEnter(trim(subname)//' conduit_fort_to_py')
        do n = 1, size(scriptNames, dim=1)
           ! Pass node to Python
           call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
        end do
-       call ESMF_TraceRegionExit(trim(subname)//' run script without export')
+       call ESMF_TraceRegionExit(trim(subname)//' conduit_fort_to_py')
     end if
 
     ! Info related to input node 
