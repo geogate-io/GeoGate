@@ -65,6 +65,7 @@
 
 #include <Python.h>
 #include <string>
+#include <map>
 
 class PythonInterpreter
 {
@@ -155,6 +156,9 @@ private:
     PyObject    *m_py_sio_module;
     PyObject    *m_py_trace_print_exception_func;
     PyObject    *m_py_sio_class;
+
+    // cache of compiled code objects, keyed by script file path
+    std::map<std::string, PyObject*> m_script_cache;
 
 };
 

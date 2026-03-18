@@ -466,6 +466,14 @@ PythonInterpreter::shutdown()
 {
     if(m_running)
     {
+        // release cached compiled code objects before finalizing
+        for(std::map<std::string, PyObject*>::iterator it = m_script_cache.begin();
+            it != m_script_cache.end(); ++it)
+        {
+            Py_DECREF(it->second);
+        }
+        m_script_cache.clear();
+
         if(m_handled_init)
         {
             Py_Finalize();
@@ -545,7 +553,9 @@ PythonInterpreter::run_script(const std::string &script,
 
 //-----------------------------------------------------------------------------
 ///
-/// Executes passed python script in the interpreter
+/// Executes passed python script in the interpreter.
+/// The script is compiled on first use and the resulting code object is
+/// cached so that subsequent calls skip both file I/O and Python compilation.
 ///
 /// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
 //-----------------------------------------------------------------------------
@@ -553,17 +563,56 @@ bool
 PythonInterpreter::run_script_file(const std::string &fname,
                                    PyObject *py_dict)
 {
-    ifstream ifs(fname.c_str());
-    if(!ifs.is_open())
-    {        
-        CONDUIT_ERROR("PythonInterpreter::run_script_file " 
-                      " failed to open "<< fname);
+    if(!m_running)
+        return false;
+
+    // look up compiled code object in cache
+    PyObject *code_obj = NULL;
+    std::map<std::string, PyObject*>::iterator it = m_script_cache.find(fname);
+
+    if(it == m_script_cache.end())
+    {
+        // first call: read and compile the script
+        ifstream ifs(fname.c_str());
+        if(!ifs.is_open())
+        {
+            CONDUIT_ERROR("PythonInterpreter::run_script_file "
+                          " failed to open " << fname);
+            return false;
+        }
+        string py_script((istreambuf_iterator<char>(ifs)),
+                         istreambuf_iterator<char>());
+        ifs.close();
+
+        if(m_echo)
+        {
+            CONDUIT_INFO("PythonInterpreter::run_script_file compiling " << fname);
+        }
+
+        code_obj = Py_CompileString(py_script.c_str(), fname.c_str(), Py_file_input);
+        if(code_obj == NULL)
+        {
+            check_error();
+            return false;
+        }
+
+        // store in cache; we hold the reference
+        m_script_cache[fname] = code_obj;
+    }
+    else
+    {
+        code_obj = it->second;
+    }
+
+    // execute the cached code object
+    PyObject *result = PyEval_EvalCode(code_obj, py_dict, py_dict);
+    if(result == NULL)
+    {
+        check_error();
         return false;
     }
-    string py_script((istreambuf_iterator<char>(ifs)),
-                     istreambuf_iterator<char>());
-    ifs.close();
-    return run_script(py_script, py_dict);
+    Py_DECREF(result);
+    return !check_error();
 }
 
 
