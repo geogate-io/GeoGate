@@ -66,133 +66,11 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
 #include <string.h>
 #include <limits.h>
 #include <cstdlib>
 #include <conduit.hpp>
-
-using namespace std;
-
-
-
-#if PY_MAJOR_VERSION >= 3
-#define IS_PY3K
-#endif
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-// Begin Functions to help with Python 2/3 Compatibility.
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-
-#if defined(IS_PY3K)
-
-//-----------------------------------------------------------------------------
-int
-PyString_Check(PyObject *o)
-{
-    return PyUnicode_Check(o);
-}
-
-
-//-----------------------------------------------------------------------------
-char *
-PyString_AsString(PyObject *py_obj)
-{
-    char *res = NULL;
-    if(PyUnicode_Check(py_obj))
-    {
-        PyObject * temp_bytes = PyUnicode_AsEncodedString(py_obj,
-                                                          "ASCII",
-                                                          "strict"); // Owned reference
-        if(temp_bytes != NULL)
-        {
-            res = strdup(PyBytes_AS_STRING(temp_bytes));
-            Py_DECREF(temp_bytes);
-        }
-        else
-        {
-            // TODO: Error
-        }
-    }
-    else if(PyBytes_Check(py_obj))
-    {
-        res = strdup(PyBytes_AS_STRING(py_obj));
-    }
-    else
-    {
-        // TODO: ERROR or auto convert?
-    }
-
-    return res;
-}
-
-//-----------------------------------------------------------------------------
-PyObject *
-PyString_FromString(const char *s)
-{
-    return PyUnicode_FromString(s);
-}
-
-//-----------------------------------------------------------------------------
-void
-PyString_AsString_Cleanup(char *bytes)
-{
-    free(bytes);
-}
-
-//-----------------------------------------------------------------------------
-int
-PyInt_Check(PyObject *o)
-{
-    return PyLong_Check(o);
-}
-
-//-----------------------------------------------------------------------------
-long
-PyInt_AsLong(PyObject *o)
-{
-    return PyLong_AsLong(o);
-}
-
-//-----------------------------------------------------------------------------
-long
-PyInt_AS_LONG(PyObject *o)
-{
-    return PyLong_AS_LONG(o);
-}
-
-//-----------------------------------------------------------------------------
-PyObject *
-PyNumber_Int(PyObject *o)
-{
-    return PyNumber_Long(o);
-}
-
-
-#else // python 2.6+
-
-//-----------------------------------------------------------------------------
-#define PyString_AsString_Cleanup(c) { /* noop */ }
-
-#endif
-
-// helper for both python 2 and 3
-//-----------------------------------------------------------------------------
-void
-PyString_To_CPP_String(PyObject *py_obj, std::string &res)
-{
-    
-    char *str = PyString_AsString(py_obj);
-    res = str;
-    PyString_AsString_Cleanup(str);
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-// End Functions to help with Python 2/3 Compatibility.
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
 ///
@@ -210,11 +88,10 @@ PythonInterpreter::PythonInterpreter()
     m_py_main_module = NULL;
     m_py_global_dict = NULL;
 
-    m_py_trace_module = NULL;
-    m_py_sio_module = NULL;
+    m_py_trace_module               = NULL;
+    m_py_sio_module                 = NULL;
     m_py_trace_print_exception_func = NULL;
-    m_py_sio_class = NULL;
-
+    m_py_sio_class                  = NULL;
 }
 
 //-----------------------------------------------------------------------------
@@ -227,7 +104,7 @@ PythonInterpreter::~PythonInterpreter()
 {
     // Shutdown the interpreter if running.
     shutdown();
- }
+}
 
 
 //-----------------------------------------------------------------------------
@@ -238,13 +115,9 @@ PythonInterpreter::~PythonInterpreter()
 void
 PythonInterpreter::set_program_name(const char *prog_name)
 {
-#ifdef IS_PY3K
     wchar_t *w_prog_name = Py_DecodeLocale(prog_name, NULL);
     Py_SetProgramName(w_prog_name);
     PyMem_RawFree(w_prog_name);
-#else
-    Py_SetProgramName(const_cast<char*>(prog_name));
-#endif
 }
 
 
@@ -256,25 +129,20 @@ PythonInterpreter::set_program_name(const char *prog_name)
 void
 PythonInterpreter::set_argv(int argc, char **argv)
 {
-#ifdef IS_PY3K
     // alloc ptrs for encoded ver
     std::vector<wchar_t*> wargv(argc);
-    
+
     for(int i = 0; i < argc; i++)
     {
         wargv[i] = Py_DecodeLocale(argv[i], NULL);
     }
-    
-    PySys_SetArgv(argc,&wargv[0]);
-    
+
+    PySys_SetArgv(argc, &wargv[0]);
+
     for(int i = 0; i < argc; i++)
     {
         PyMem_RawFree(wargv[i]);
     }
-
-#else
-    PySys_SetArgv(argc, argv);
-#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -303,11 +171,11 @@ PythonInterpreter::initialize(int argc, char **argv)
         const char *prog_name = "flow_embedded_py";
 
         if(argc == 0 || argv == NULL)
-        { 
+        {
             set_program_name(prog_name);
         }
         else
-        {   
+        {
             set_program_name(argv[0]);
         }
 
@@ -316,7 +184,6 @@ PythonInterpreter::initialize(int argc, char **argv)
         PyEval_InitThreads();
 
         // set sys argvs
-
         if(argc == 0 || argv == NULL)
         {
             set_argv(1, const_cast<char**>(&prog_name));
@@ -340,13 +207,13 @@ PythonInterpreter::initialize(int argc, char **argv)
 
     // all of these PyObject*s are borrowed refs
     m_py_main_module = PyImport_AddModule((char*)"__main__");
-    
+
     if(m_py_main_module == NULL)
     {
         std::cout << "PythonInterpreter failed to import `__main__` module" << std::endl;
         return false;
     }
-    
+
     m_py_global_dict = PyModule_GetDict(m_py_main_module);
 
     if(m_py_global_dict == NULL)
@@ -356,8 +223,6 @@ PythonInterpreter::initialize(int argc, char **argv)
     }
 
     // get objects that help us print exceptions
-
-
     PyRun_SimpleString("import traceback\n");
     if(check_error())
         return false;
@@ -378,7 +243,7 @@ PythonInterpreter::initialize(int argc, char **argv)
         CONDUIT_INFO("PythonInterpreter failed to access `traceback` dictionary");
         return false;
     }
-    
+
     m_py_trace_print_exception_func = PyDict_GetItemString(py_trace_dict,
                                                            "print_exception");
 
@@ -389,71 +254,39 @@ PythonInterpreter::initialize(int argc, char **argv)
     }
 
     // get ref to StringIO class
-
-#ifdef IS_PY3K
-    const char *sio_module_name = "io";
     PyRun_SimpleString("import io\n");
     if(check_error())
         return false;
-#else
-    const char *sio_module_name = "StringIO";
-    PyRun_SimpleString("import StringIO\n");
-    if(check_error())
-        return false;
-#endif
 
-    m_py_sio_module = PyImport_ImportModule(sio_module_name);
-    
+    m_py_sio_module = PyImport_ImportModule("io");
+
     if(m_py_sio_module == NULL)
     {
-        CONDUIT_INFO("PythonInterpreter failed to import "
-                     << "`"
-                     << sio_module_name
-                     << "` module");
+        CONDUIT_INFO("PythonInterpreter failed to import `io` module");
         return false;
     }
-    
+
     PyObject *py_sio_dict = PyModule_GetDict(m_py_sio_module);
-    
+
     if(py_sio_dict == NULL)
     {
-        CONDUIT_INFO("PythonInterpreter failed to access `"
-                     << sio_module_name 
-                     << "` dictionary");
+        CONDUIT_INFO("PythonInterpreter failed to access `io` dictionary");
         return false;
     }
 
-    // input the class
-    m_py_sio_class = PyDict_GetItemString(py_sio_dict,"StringIO");
-
+    m_py_sio_class = PyDict_GetItemString(py_sio_dict, "StringIO");
 
     if(m_py_sio_class == NULL)
     {
-        CONDUIT_INFO("PythonInterpreter failed access StringIO class");
+        CONDUIT_INFO("PythonInterpreter failed to access StringIO class");
         return false;
     }
-    
+
     m_running = true;
 
     return true;
 }
 
-
-//-----------------------------------------------------------------------------
-///
-/// Resets the state of the interpreter if it is running
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-void
-PythonInterpreter::reset()
-{
-    if(m_running)
-    {
-        // clean gloal dict.
-        PyDict_Clear(m_py_global_dict);
-    }
-}
 
 //-----------------------------------------------------------------------------
 ///
@@ -479,23 +312,11 @@ PythonInterpreter::shutdown()
             Py_Finalize();
         }
 
-        m_running = false;
+        m_running      = false;
         m_handled_init = false;
     }
 }
 
-
-//-----------------------------------------------------------------------------
-///
-/// Adds passed path to "sys.path"
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-bool
-PythonInterpreter::add_system_path(const std::string &path)
-{
-    return run_script("sys.path.insert(1,r'" + path + "')\n");
-}
 
 //-----------------------------------------------------------------------------
 ///
@@ -511,7 +332,7 @@ PythonInterpreter::run_script(const std::string &script)
 
 //-----------------------------------------------------------------------------
 ///
-/// Executes passed python script in the interpreter
+/// Executes passed python script file in the interpreter
 ///
 /// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
 //-----------------------------------------------------------------------------
@@ -573,15 +394,15 @@ PythonInterpreter::run_script_file(const std::string &fname,
     if(it == m_script_cache.end())
     {
         // first call: read and compile the script
-        ifstream ifs(fname.c_str());
+        std::ifstream ifs(fname.c_str());
         if(!ifs.is_open())
         {
             CONDUIT_ERROR("PythonInterpreter::run_script_file "
                           " failed to open " << fname);
             return false;
         }
-        string py_script((istreambuf_iterator<char>(ifs)),
-                         istreambuf_iterator<char>());
+        std::string py_script((std::istreambuf_iterator<char>(ifs)),
+                              std::istreambuf_iterator<char>());
         ifs.close();
 
         if(m_echo)
@@ -616,43 +437,16 @@ PythonInterpreter::run_script_file(const std::string &fname,
 }
 
 
-
 //-----------------------------------------------------------------------------
 ///
-/// Adds C python object to the global dictionary.
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-bool
-PythonInterpreter::set_global_object(PyObject *py_obj,
-                                     const string &py_name)
-{
-    return set_dict_object(m_py_global_dict, py_obj, py_name);
-}
-
-//-----------------------------------------------------------------------------
-///
-/// Get C python object from the global dictionary.
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-PyObject *
-PythonInterpreter::get_global_object(const string &py_name)
-{
-    return get_dict_object(m_py_global_dict, py_name);
-}
-
-
-//-----------------------------------------------------------------------------
-///
-/// Adds C python object to the global dictionary.
+/// Adds C python object to the given dictionary.
 ///
 /// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
 //-----------------------------------------------------------------------------
 bool
 PythonInterpreter::set_dict_object(PyObject *py_dict,
                                    PyObject *py_obj,
-                                   const string &py_name)
+                                   const std::string &py_name)
 {
     PyDict_SetItemString(py_dict, py_name.c_str(), py_obj);
     return !check_error();
@@ -660,13 +454,13 @@ PythonInterpreter::set_dict_object(PyObject *py_dict,
 
 //-----------------------------------------------------------------------------
 ///
-/// Get C python object from the global dictionary.
+/// Get C python object from the given dictionary.
 ///
 /// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
 //-----------------------------------------------------------------------------
 PyObject *
 PythonInterpreter::get_dict_object(PyObject *py_dict,
-                                   const string &py_name)
+                                   const std::string &py_name)
 {
     PyObject *res = PyDict_GetItemString(py_dict, py_name.c_str());
     if(check_error())
@@ -679,10 +473,7 @@ PythonInterpreter::get_dict_object(PyObject *py_dict,
 /// Checks python error state and constructs appropriate error message
 /// if an error did occur. It can be used to check for errors in both
 /// python scripts & calls to the C-API. The difference between these
-/// to cases is the existence of a python traceback.
-///
-/// Note: This method clears the python error state, but it will continue
-/// to return "true" indicating an error until clear_error() is called.
+/// two cases is the existence of a python traceback.
 ///
 /// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
 //-----------------------------------------------------------------------------
@@ -694,7 +485,7 @@ PythonInterpreter::check_error()
         m_error = true;
         m_error_msg = "<Unknown Error>";
 
-        string sval ="";
+        std::string sval = "";
         PyObject *py_etype;
         PyObject *py_eval;
         PyObject *py_etrace;
@@ -738,95 +529,6 @@ PythonInterpreter::check_error()
 
 //-----------------------------------------------------------------------------
 ///
-/// Clears environment error flag and message.
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-void
-PythonInterpreter::clear_error()
-{
-    if(m_error)
-    {
-        m_error = false;
-        m_error_msg = "";
-    }
-}
-
-//-----------------------------------------------------------------------------
-///
-/// Helper that converts a python object to a double.
-/// Returns true if the conversion succeeds.
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-bool
-PythonInterpreter::PyObject_to_double(PyObject *py_obj, double &res)
-{
-    if(PyFloat_Check(py_obj))
-    {
-        res = PyFloat_AS_DOUBLE(py_obj);
-        return true;
-    }
-
-    if(PyInt_Check(py_obj))
-    {
-        res = (double) PyInt_AS_LONG(py_obj);
-        return true;
-    }
-
-    if(PyLong_Check(py_obj))
-    {
-        res = PyLong_AsDouble(py_obj);
-        return true;
-    }
-
-    if(PyNumber_Check(py_obj) != 1)
-        return false;
-
-    PyObject *py_val = PyNumber_Float(py_obj);
-    if(py_val == NULL)
-        return false;
-    res = PyFloat_AS_DOUBLE(py_val);
-    Py_DECREF(py_val);
-    return true;
-}
-
-//-----------------------------------------------------------------------------
-///
-/// Helper that converts a python object to an int.
-/// Returns true if the conversion succeeds.
-///
-/// Note: Adapted from VisIt: src/avt/PythonFilters/PythonInterpreter.cpp
-//-----------------------------------------------------------------------------
-bool
-PythonInterpreter::PyObject_to_int(PyObject *py_obj, int &res)
-{
-    if(PyInt_Check(py_obj))
-    {
-        res = (int)PyInt_AS_LONG(py_obj);
-        return true;
-    }
-
-    if(PyLong_Check(py_obj))
-    {
-        res = (int)PyLong_AsLong(py_obj);
-        return true;
-    }
-
-    if(PyNumber_Check(py_obj) != 1)
-        return false;
-
-    PyObject *py_val = PyNumber_Int(py_obj);
-
-    if(py_val == NULL)
-        return false;
-    res = (int) PyInt_AS_LONG(py_val);
-    Py_DECREF(py_val);
-    return true;
-}
-
-//-----------------------------------------------------------------------------
-///
 /// Helper that converts a python object to a C++ string.
 /// Returns true if the conversion succeeds.
 ///
@@ -839,7 +541,9 @@ PythonInterpreter::PyObject_to_string(PyObject *py_obj, std::string &res)
     if(py_obj_str == NULL)
         return false;
 
-    PyString_To_CPP_String(py_obj_str,res);
+    const char *str = PyUnicode_AsUTF8(py_obj_str);
+    if(str != NULL)
+        res = str;
     Py_DECREF(py_obj_str);
     return true;
 }
@@ -859,7 +563,7 @@ PythonInterpreter::PyTraceback_to_string(PyObject *py_etype,
 {
     if(!py_eval)
         py_eval = Py_None;
-  
+
     // we can only print traceback if we have fully
     // inited the interpreter, since it uses imported helpers
     if(!m_running)
@@ -868,7 +572,7 @@ PythonInterpreter::PyTraceback_to_string(PyObject *py_etype,
     }
 
     // create a StringIO object "buffer" to print traceback into.
-    PyObject *py_args = Py_BuildValue("()");
+    PyObject *py_args   = Py_BuildValue("()");
     PyObject *py_buffer = PyObject_CallObject(m_py_sio_class, py_args);
     Py_DECREF(py_args);
 
@@ -878,7 +582,7 @@ PythonInterpreter::PyTraceback_to_string(PyObject *py_etype,
         return false;
     }
 
-    // call traceback.print_tb(etrace,file=buffer)
+    // call traceback.print_exception(etype, eval, etrace, file=buffer)
     PyObject *py_res = PyObject_CallFunction(m_py_trace_print_exception_func,
                                              (char*)"OOOOO",
                                              py_etype,
@@ -893,8 +597,7 @@ PythonInterpreter::PyTraceback_to_string(PyObject *py_etype,
     }
 
     // call buffer.getvalue() to get python string object
-    PyObject *py_str = PyObject_CallMethod(py_buffer,(char*)"getvalue",NULL);
-
+    PyObject *py_str = PyObject_CallMethod(py_buffer, (char*)"getvalue", NULL);
 
     if(!py_str)
     {
@@ -903,7 +606,9 @@ PythonInterpreter::PyTraceback_to_string(PyObject *py_etype,
     }
 
     // convert python string object to std::string
-    PyString_To_CPP_String(py_str,res);
+    const char *str = PyUnicode_AsUTF8(py_str);
+    if(str != NULL)
+        res = str;
 
     Py_DECREF(py_buffer);
     Py_DECREF(py_res);
@@ -911,8 +616,3 @@ PythonInterpreter::PyTraceback_to_string(PyObject *py_etype,
 
     return true;
 }
-
-
-
-
-
