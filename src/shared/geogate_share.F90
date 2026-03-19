@@ -19,6 +19,7 @@ module geogate_share
   use ESMF, only: ESMF_FieldBundleRegridStore, ESMF_FieldBundleRegrid
   use ESMF, only: ESMF_REGRIDMETHOD_BILINEAR, ESMF_POLEMETHOD_ALLAVG, ESMF_UNMAPPEDACTION_IGNORE
   use ESMF, only: ESMF_REGION_SELECT, ESMF_TERMORDER_SRCSEQ
+  use ESMF, only: ESMF_TraceRegionEnter, ESMF_TraceRegionExit
 
   use NUOPC, only: NUOPC_GetAttribute
 
@@ -149,6 +150,9 @@ module geogate_share
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('FB_init_pointer')
+
     ! Create empty field bundle, FBout
     FBout = ESMF_FieldBundleCreate(name=trim(name), rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
@@ -233,6 +237,9 @@ module geogate_share
        end do ! fieldCount
     end if
 
+    ! Exit trace region
+    call ESMF_TraceRegionExit('FB_init_pointer')
+
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine FB_init_pointer
@@ -260,6 +267,9 @@ module geogate_share
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('FB_copy')
 
     ! Check FBout is created or not
     if (.not. ESMF_FieldBundleIsCreated(FBout, rc=rc)) then
@@ -312,6 +322,9 @@ module geogate_share
     call ESMF_FieldBundleRegrid(FBin, FBout, rh, zeroregion=ESMF_REGION_SELECT, &
       termorderflag=(/ ESMF_TERMORDER_SRCSEQ /), rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('FB_copy')
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
