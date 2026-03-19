@@ -5,6 +5,8 @@ module geogate_python_interface
   !-----------------------------------------------------------------------------
 
   use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO
+  use ESMF, only: ESMF_TraceRegionEnter, ESMF_TraceRegionExit
+
   use, intrinsic :: iso_c_binding, only : C_PTR, C_CHAR
 
   implicit none
@@ -62,7 +64,14 @@ contains
 
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('conduit_fort_from_py')
+
+    ! Run Python script
     nodeOut = c_conduit_fort_from_py(trim(py_script)//C_NULL_CHAR)
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('conduit_fort_from_py')
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
@@ -83,7 +92,14 @@ contains
 
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('conduit_fort_to_py_to_fort')
+
+    ! Run Python script
     nodeOut = c_conduit_fort_to_py_to_fort(nodeIn, trim(py_script)//C_NULL_CHAR)
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('conduit_fort_to_py_to_fort')
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 

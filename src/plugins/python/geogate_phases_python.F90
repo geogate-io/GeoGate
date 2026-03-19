@@ -75,7 +75,7 @@ contains
     type(ESMF_Clock) :: clock
     type(ESMF_VM) :: vm
     integer, save :: timeStep = 0
-    logical :: impOnExpMesh
+    logical, save :: remapImportFields = .false.
     character(ESMF_MAXSTR) :: namespace
     character(ESMF_MAXSTR) :: cvalue, message, timeStr
     character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_run) '
@@ -85,7 +85,7 @@ contains
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
     ! Enter trace region
-    call ESMF_TraceRegionEnter(trim(subname))
+    call ESMF_TraceRegionEnter('geogate_phases_python_run')
 
     ! Get internal state
     nullify(is_local%wrap)
@@ -128,11 +128,11 @@ contains
        call NUOPC_CompAttributeGet(gcomp, name='ImportOnExportMesh', value=cvalue, &
          isPresent=isPresent, isSet=isSet, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
-       impOnExpMesh = .false.
+       remapImportFields = .false.
        if (isPresent .and. isSet) then
-          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') impOnExpMesh = .true.
+          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') remapImportFields = .true.
        end if
-       write(message, fmt='(A,L)') trim(subname)//' : ImportOnExportMesh = ', impOnExpMesh
+       write(message, fmt='(A,L)') trim(subname)//' : ImportOnExportMesh = ', remapImportFields
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
 
        ! Set flag
@@ -152,7 +152,6 @@ contains
     call conduit_node_set_path_int32(node, "mpi/petcount", petCount)
 
     ! Add import data to node
-    call ESMF_TraceRegionEnter(trim(subname)//' FB2Node:import')
     if (is_local%wrap%numComp > 0) then
        ! Allocate myMesh for import
        if (.not. allocated(myMeshImp)) allocate(myMeshImp(is_local%wrap%numComp))
@@ -163,22 +162,20 @@ contains
           call FB2Node(is_local%wrap%FBImp(n), "import", trim(is_local%wrap%compName(n)), myMeshImp(n), node, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           ! Interpolate import fields to export mesh and add them to node
-          if (impOnExpMesh) then
-             call ESMF_TraceRegionEnter(trim(subname)//' FB2Node:import:interp2export')
+          if (remapImportFields) then
              ! Interpolate import fields to export mesh and create new FB
              call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
                'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
                is_local%wrap%meshExp, is_local%wrap%RHImp2Exp(n), rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
              ! Load content of FB to Conduit node
              call FB2Node(is_local%wrap%FBImpIntp(n), "import_on_export_grid", &
                trim(is_local%wrap%compName(n)), myMeshExp, node, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
-             call ESMF_TraceRegionExit(trim(subname)//' FB2Node:import:interp2export')
           end if
        end do
     end if
-    call ESMF_TraceRegionExit(trim(subname)//' FB2Node:import')
 
     ! Query name space from export state
     call NUOPC_GetAttribute(is_local%wrap%NStateExp, name="Namespace", value=namespace, rc=rc)
@@ -187,37 +184,29 @@ contains
 
     ! Check export state
     if (ESMF_FieldBundleIsCreated(is_local%wrap%FBExp)) then
-       call ESMF_TraceRegionEnter(trim(subname)//' FB2Node:export')
        ! Add export data to node
        call FB2Node(is_local%wrap%FBExp, "export", trim(namespace), myMeshExp, node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       call ESMF_TraceRegionExit(trim(subname)//' FB2Node:export')
 
        ! Loop over scripts
        do n = 1, size(scriptNames, dim=1)
           ! Pass node to Python
-          call ESMF_TraceRegionEnter(trim(subname)//' conduit_fort_to_py_to_fort')
           nodeOut = conduit_fort_to_py_to_fort(node, trim(scriptNames(n))//char(0))
-          call ESMF_TraceRegionExit(trim(subname)//' conduit_fort_to_py_to_fort')
 
           ! Update export fields
-          call ESMF_TraceRegionEnter(trim(subname)//' Node2FB:export')
           if (c_associated(nodeOut)) then
              call Node2FB(is_local%wrap%FBExp, namespace, nodeOut, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
           else
              call ESMF_LogWrite(subname//' Nothing returned from Python!', ESMF_LOGMSG_INFO)
           end if
-          call ESMF_TraceRegionExit(trim(subname)//' Node2FB:export')
        end do
     else
        ! Loop over scripts
-       call ESMF_TraceRegionEnter(trim(subname)//' conduit_fort_to_py')
        do n = 1, size(scriptNames, dim=1)
           ! Pass node to Python
           call conduit_fort_to_py(node, trim(scriptNames(n))//char(0))
        end do
-       call ESMF_TraceRegionExit(trim(subname)//' conduit_fort_to_py')
     end if
 
     ! Info related to input node 
@@ -240,7 +229,7 @@ contains
     timeStep = timeStep+1
 
     ! Exit trace region
-    call ESMF_TraceRegionExit(trim(subname))
+    call ESMF_TraceRegionExit('geogate_phases_python_run')
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
@@ -271,6 +260,9 @@ contains
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
+
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('FB2Node')
 
     ! Add channel
     channel = conduit_node_fetch(node, "channels/"//trim(parent)//"/"//trim(compName))
@@ -358,8 +350,11 @@ contains
        nullify(farrayPtr)
     end do
 
-    ! Clean memeory
+    ! Clean memory
     deallocate(fieldNameList)
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('FB2Node')
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
@@ -389,6 +384,9 @@ contains
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
+
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('Node2FB')
 
     ! Create node with fields
     if (conduit_node_has_path(node, "data/fields")) then
@@ -437,6 +435,9 @@ contains
           end if
        end do
     end if
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('Node2FB')
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
