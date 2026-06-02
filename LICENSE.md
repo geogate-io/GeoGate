@@ -94,4 +94,5 @@ agreement.
 
 ---
 
-*For any licensing questions not addressed above, contact @uturuncoglu.*
+*For any licensing questions not addressed above, contact 
+[@uturuncoglu](https://github.com/uturuncoglu).*
