@@ -94,4 +94,4 @@ agreement.
 
 ---
 
-*For any licensing questions not addressed above, contact [ufuk.turuncoglu@gmail.com].*
+*For any licensing questions not addressed above, contact @uturuncoglu.*
