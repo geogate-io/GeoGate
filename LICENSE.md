@@ -40,7 +40,7 @@ commercial license agreement with the copyright holder.
 - Use by a private company to process, model, or analyze data as part of a
   commercial workflow, even if the output is provided free of charge.
 
-To obtain a commercial license, contact: **[YOUR EMAIL ADDRESS]**
+To obtain a commercial license, contact: **[@uturuncoglu](https://github.com/uturuncoglu)**
 
 ---
 
