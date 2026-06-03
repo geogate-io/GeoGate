@@ -80,8 +80,7 @@ License at no cost.
 
 **I work at a national lab (e.g., NOAA, NASA, NCAR) — which license applies?**
 Publicly funded governmental and national laboratory research use qualifies as
-Non-Commercial. If you are running GeoGate as part of an operational
-revenue-generating service, please contact us to clarify.
+Non-Commercial.
 
 **I'm a private weather company — do I need a commercial license?**
 Yes. Any operational use within a for-profit organization requires a Commercial
