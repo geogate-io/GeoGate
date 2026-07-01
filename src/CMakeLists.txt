@@ -16,6 +16,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 option(GEOGATE_USE_CATALYST "Support to Use Catalyst for Insitu Visualization" OFF)
 option(GEOGATE_USE_PYTHON   "Support to Interact with Python"                  OFF)
+option(GEOGATE_USE_FTORCH   "Support to Use FTorch for ML Model Inference"     OFF)
 
 ###############################################################################
 ### Set required packages
@@ -43,6 +44,12 @@ endif()
 if(GEOGATE_USE_PYTHON)
   message("Python plugin is activated.")
   find_package(Conduit REQUIRED)
+endif()
+
+# Find FTorch
+if(GEOGATE_USE_FTORCH)
+  message("FTorch plugin is activated.")
+  find_package(FTorch REQUIRED)
 endif()
 
 if(CONDUIT_PYTHON_ENABLED OR CATALYST_USE_PYTHON)
@@ -129,6 +136,14 @@ if(GEOGATE_USE_PYTHON)
   target_include_directories(geogate PUBLIC ${PYTHON_INCLUDE_DIR})
   target_link_libraries(geogate PRIVATE conduit::conduit conduit::conduit_python conduit::conduit_mpi)
   target_link_libraries(geogate PRIVATE ${PYTHON_LIBRARY})
+endif()
+
+# Support for FTorch (PyTorch model inference from Fortran)
+add_subdirectory(plugins/ftorch)
+add_dependencies(geogate geogate_ftorch)
+target_link_libraries(geogate PRIVATE geogate_ftorch)
+if(GEOGATE_USE_FTORCH)
+  target_link_libraries(geogate PRIVATE FTorch::ftorch)
 endif()
 
 # Add shared code

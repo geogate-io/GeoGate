@@ -71,6 +71,7 @@ module geogate_nuopc
   use geogate_phases_io, only: geogate_phases_io_run
   use geogate_phases_python, only: geogate_phases_python_run
   use geogate_phases_catalyst, only: geogate_phases_catalyst_run
+  use geogate_phases_ftorch, only: geogate_phases_ftorch_run
 
   implicit none
   private
@@ -174,6 +175,12 @@ contains
     call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, phaseLabelList=(/"geogate_phases_catalyst"/), userRoutine=model_routine_Run, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specPhaseLabel="geogate_phases_catalyst", specRoutine=geogate_phases_catalyst_run, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! FTorch phase
+    call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, phaseLabelList=(/ 'geogate_phases_ftorch' /), userRoutine=model_routine_Run, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specPhaseLabel="geogate_phases_ftorch", specRoutine=geogate_phases_ftorch_run, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------

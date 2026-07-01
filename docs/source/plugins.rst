@@ -8,3 +8,4 @@ Plugins
    
    catalyst
    python
+   ftorch
