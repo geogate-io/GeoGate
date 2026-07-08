@@ -167,31 +167,9 @@ PythonInterpreter::initialize(int argc, char **argv)
     }
     else
     {
-        // set prog name
-        const char *prog_name = "flow_embedded_py";
-
-        if(argc == 0 || argv == NULL)
-        {
-            set_program_name(prog_name);
-        }
-        else
-        {
-            set_program_name(argv[0]);
-        }
-
         // Init Python
         Py_Initialize();
         PyEval_InitThreads();
-
-        // set sys argvs
-        if(argc == 0 || argv == NULL)
-        {
-            set_argv(1, const_cast<char**>(&prog_name));
-        }
-        else
-        {
-            set_argv(argc, argv);
-        }
 
         // make sure we know we need to cleanup the interp
         m_handled_init = true;
@@ -200,8 +178,9 @@ PythonInterpreter::initialize(int argc, char **argv)
     // do to setup b/c we need for c++ connection,
     // even if python was already inited
 
-    // setup up __main__ and capture StdErr
-    PyRun_SimpleString("import os,sys\n");
+    // ensure current working directory is in sys.path so that local
+    // Python modules in the run directory are importable
+    PyRun_SimpleString("import os, sys\nif '' not in sys.path: sys.path.insert(0, '')\n");
     if(check_error())
         return false;
 

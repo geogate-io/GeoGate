@@ -16,6 +16,12 @@ module geogate_python_interface
   !-----------------------------------------------------------------------------
 
   interface
+    subroutine c_geogate_python_preload(preload_modules) bind(C, name="geogate_python_preload")
+      use iso_c_binding
+      implicit none
+      character(kind=C_CHAR), intent(in) :: preload_modules(*)
+    end subroutine c_geogate_python_preload
+
     subroutine c_conduit_fort_to_py(nodeIn, py_script, node_in_name) bind(C, name="conduit_fort_to_py")
       use iso_c_binding
       implicit none
@@ -53,6 +59,29 @@ module geogate_python_interface
 !===============================================================================
 contains
 !===============================================================================
+
+  subroutine geogate_python_preload(preload_modules)
+    use iso_c_binding
+    implicit none
+
+    ! input/output variables
+    character(*), intent(in), optional :: preload_modules
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_python_preload) '
+    !---------------------------------------------------------------------------
+
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+    call ESMF_TraceRegionEnter('geogate_python_preload')
+    if (present(preload_modules)) then
+      call c_geogate_python_preload(trim(preload_modules)//C_NULL_CHAR)
+    else
+      call c_geogate_python_preload(C_NULL_CHAR)
+    end if
+    call ESMF_TraceRegionExit('geogate_python_preload')
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_python_preload
 
   subroutine conduit_fort_to_py(nodeIn, py_script, node_in_name)
     use iso_c_binding

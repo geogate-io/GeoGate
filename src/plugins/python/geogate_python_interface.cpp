@@ -42,6 +42,25 @@ extern "C" {
   }
 
   //----------------------------------------------------------------------------
+  // Initialize interpreter and run user-specified pre-import statements.
+  // preload_modules is a newline-separated Python script built by the Fortran
+  // caller by joining each PreloadPythonModules array entry with char(10).
+  // Callable from Fortran; called once in the first_time block of
+  // geogate_phases_python_run() before any user script executes.
+  //----------------------------------------------------------------------------
+
+  void geogate_python_preload(const char *preload_modules)
+  {
+      PythonInterpreter *pyintp = init_python_interpreter();
+      if (pyintp == NULL) return;
+
+      if (preload_modules == NULL || preload_modules[0] == '\0') return;
+
+      if (!pyintp->run_script(preload_modules))
+          std::cout << "WARNING: geogate_python_preload: one or more imports failed" << std::endl;
+  }
+
+  //----------------------------------------------------------------------------
   // access node passed from fortran to python
   //----------------------------------------------------------------------------
 

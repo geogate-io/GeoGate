@@ -30,6 +30,7 @@ module geogate_phases_python
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
   use geogate_python_interface, only: conduit_fort_to_py_to_fort
+  use geogate_python_interface, only: geogate_python_preload
 
   implicit none
   private
@@ -68,6 +69,7 @@ contains
     type(C_PTR) :: node, nodeOut
     type(C_PTR) :: info
     integer :: n, mpiComm, localPet, petCount
+    integer :: itemCount
     logical :: isPresent, isSet
     logical, save :: first_time = .true.
     type(InternalState) :: is_local
@@ -78,6 +80,8 @@ contains
     logical, save :: remapImportFields = .false.
     character(ESMF_MAXSTR) :: namespace
     character(ESMF_MAXSTR) :: cvalue, message, timeStr
+    character(ESMF_MAXSTR), save, allocatable :: preloadModuleList(:)
+    character(len=4096) :: preload_script
     character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_run) '
     !---------------------------------------------------------------------------
 
@@ -112,6 +116,29 @@ contains
 
     ! Initialize
     if (first_time) then
+       ! Initialize Python interpreter and run user-specified pre-import statements
+       ! at C++ level before the first script execution
+       itemCount = 0
+       call NUOPC_CompAttributeGet(gcomp, name="PreloadPythonModules", itemCount=itemCount, &
+         isPresent=isPresent, isSet=isSet, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (isPresent .and. isSet .and. itemCount > 0) then
+          allocate(preloadModuleList(itemCount))
+          call NUOPC_CompAttributeGet(gcomp, name="PreloadPythonModules", valueList=preloadModuleList, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          preload_script = ''
+          do n = 1, itemCount
+             write(message, fmt='(A,I2,A)') trim(subname)//": PreloadPythonModules(", n, ") = "//trim(preloadModuleList(n))
+             call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+             if (n > 1) preload_script = trim(preload_script)//char(10)
+             preload_script = trim(preload_script)//trim(preloadModuleList(n))
+          end do
+          call geogate_python_preload(trim(preload_script))
+          deallocate(preloadModuleList)
+       else
+          call geogate_python_preload()
+       end if
+
        ! Python script/s
        call NUOPC_CompAttributeGet(gcomp, name="PythonScripts", value=cvalue, &
          isPresent=isPresent, isSet=isSet, rc=rc)
@@ -132,7 +159,7 @@ contains
        if (isPresent .and. isSet) then
           if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') remapImportFields = .true.
        end if
-       write(message, fmt='(A,L)') trim(subname)//' : ImportOnExportMesh = ', remapImportFields
+       write(message, fmt='(A,L)') trim(subname)//': ImportOnExportMesh = ', remapImportFields
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
 
        ! Set flag
