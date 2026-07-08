@@ -74,14 +74,11 @@ COP1:
     KeepFieldList: Sa_u10m:Sa_v10m
     PythonScripts: geogate_modify.py
     ExportMeshFile: mesh_atm.nc
-    # Reusing the import field names is intentional and safe: import state
-    # and export state are separate ESMF State objects on the same
-    # component, so there is no collision -- this is the standard
-    # read-transform-re-export mediator pattern. ExportFields must also
-    # match a StandardName already known to fieldDictionary (fd_ufs.yaml);
-    # arbitrary made-up names fail NUOPC_Advertise with "is not a
-    # StandardName in the NUOPC_FieldDictionary!".
-    ExportFields: Sa_u10m:Sa_v10m
+    # Must be a YAML list, not a colon-separated string: unlike
+    # KeepFieldList/PythonScripts, GeoGate reads ExportFields through
+    # NUOPC's own multi-value attribute API with no manual splitting, so a
+    # colon-joined string arrives as a single (invalid) StandardName.
+    ExportFields: [Sa_u10m, Sa_v10m]
     <<: *anchor
 # COP2: imports COP1's scaled fields and runs a one-way Python script
 # (geogate_plot.py) that renders them. No ExportFields is set, so GeoGate
