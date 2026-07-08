@@ -1,4 +1,4 @@
-name: Test Catalyst Plugin with OSMesa
+name: Test Python Plugin
 
 env:
   backend: osmesa
@@ -9,7 +9,8 @@ env:
   esmf: 8.8.0
   paraview: 5.13.2
   spack: prereleases/v1.0.0-alpha.4
-  catalyst_script: "pv_write.py:pv_two_channel.py" 
+  esmx_config: esmxRun_python.yaml
+  esmx_np: 5
 
 on:
   workflow_dispatch:
@@ -51,8 +52,21 @@ jobs:
         compiler: ${{ env.compiler }}
         install_dir: ${{ github.workspace }}/app
         spack_dir: ${{ github.workspace }}/app/spack
-        use_python: OFF
+        use_python: ON
         use_catalyst: ON
+
+    # geogate_plot.py needs matplotlib in the same Python environment that
+    # GeoGate's embedded interpreter loads (the Spack-provided Python pulled
+    # in by conduit+python/paraview+python). Installed with --user since the
+    # Spack view is otherwise read-only to the runner user.
+    - name: Install Python Plotting Dependencies
+      run: |
+        . ${{ github.workspace }}/app/spack/share/spack/setup-env.sh
+        . $(spack location -i lmod)/lmod/lmod/init/bash
+        spack env activate test
+        module load conduit
+        python3 -m pip install --user --quiet matplotlib
+      shell: bash
 
     - name: Install CDEPS
       id: install-cdeps
@@ -62,7 +76,7 @@ jobs:
         install_dir: ${{ github.workspace }}/app
         spack_dir: ${{ github.workspace }}/app/spack
 
-    - name: Run Simulation 
+    - name: Run Simulation
       uses: ./app/geogate/.github/actions/case_run
       with:
         compiler: ${{ env.compiler }}
@@ -70,7 +84,9 @@ jobs:
         spack_dir: ${{ github.workspace }}/app/spack
         cdeps_dir: ${{ github.workspace }}/app/cdeps/install
         geogate_dir: ${{ github.workspace }}/app/geogate/install
-        config_dir: catalyst
+        config_dir: python
+        esmx_config: ${{ env.esmx_config }}
+        esmx_np: ${{ env.esmx_np }}
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4

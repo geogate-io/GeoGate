@@ -70,6 +70,7 @@ jobs:
         spack_dir: ${{ github.workspace }}/app/spack
         cdeps_dir: ${{ github.workspace }}/app/cdeps/install
         geogate_dir: ${{ github.workspace }}/app/geogate/install
+        config_dir: catalyst
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4

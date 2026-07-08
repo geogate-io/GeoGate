@@ -1,0 +1,93 @@
+ESMX:
+  App:
+    globalResourceControl: true
+    logKindFlag: ESMF_LOGKIND_Multi
+    logAppendFlag: false
+    logFlush: true
+    fieldDictionary: fd_ufs.yaml
+    startTime: 2024-08-11T12:00:00
+    stopTime: 2024-08-14T12:00:00
+  Driver:
+    componentList: [ATM, OCN, COP1, COP2]
+    attributes:
+      Verbosity: low
+    runSequence: |
+      @43200
+        ATM -> COP1 :remapMethod=redist
+        OCN -> COP1 :remapMethod=redist
+        COP1 geogate_phases_python
+        COP1 -> COP2 :remapMethod=redist
+        COP2 geogate_phases_python
+        ATM
+        OCN
+      @
+generalAttributes: &anchor
+  case_name: cop_test
+  stop_n: 3
+  stop_option: ndays
+  stop_ymd: -999
+  restart_n: 1
+  restart_option: never
+  restart_ymd: -999
+ATM:
+  model: datm
+  petList: 0-1
+  attributes:
+    Verbosity: low
+    Diagnostic: 0
+    read_restart: .false.
+    orb_eccen: 1.e36
+    orb_iyear: 2000
+    orb_iyear_align: 2000
+    orb_mode: fixed_year
+    orb_mvelp: 1.e36
+    orb_obliq: 1.e36
+    ScalarFieldCount: 3
+    ScalarFieldIdxGridNX: 1
+    ScalarFieldIdxGridNY: 2
+    ScalarFieldIdxNextSwCday: 3
+    ScalarFieldName: cpl_scalars
+    <<: *anchor
+OCN:
+  model: docn
+  petList: 0-1
+  attributes:
+    Verbosity: low
+    Diagnostic: 0
+    read_restart: .false.
+    ScalarFieldCount: 3
+    ScalarFieldIdxGridNX: 1
+    ScalarFieldIdxGridNY: 2
+    ScalarFieldIdxNextSwCday: 3
+    ScalarFieldName: cpl_scalars
+    <<: *anchor
+# COP1: receives raw DATM fields and runs a two-way Python script
+# (geogate_modify.py) that scales them and returns the result for export.
+# Element-wise scaling is embarrassingly parallel, so this instance can
+# safely run on more than one PET.
+COP1:
+  model: geogate
+  petList: 2-3
+  attributes:
+    Verbosity: low
+    Diagnostic: 0
+    KeepFieldList: Sa_u10m:Sa_v10m
+    PythonScripts: geogate_modify.py
+    ExportMeshFile: mesh_atm.nc
+    ExportFields: Sa_u10m_x2:Sa_v10m_x2
+    <<: *anchor
+# COP2: imports COP1's scaled fields and runs a one-way Python script
+# (geogate_plot.py) that renders them. No ExportFields is set, so GeoGate
+# does not build an export state and the phase runs the import-only code
+# path. Plotting needs the whole global field at once, so, per the
+# "Limitations" note in docs/source/python.rst, this instance is pinned to
+# a single PET rather than made MPI-aware.
+COP2:
+  model: geogate
+  petList: 4
+  attributes:
+    Verbosity: low
+    Diagnostic: 0
+    KeepFieldList: Sa_u10m_x2:Sa_v10m_x2
+    PythonScripts: geogate_plot.py
+    <<: *anchor
