@@ -29,23 +29,23 @@ Runtime Configuration Options
 
 In GeoGate, each specific plugin comes with its own set of runtime configuration options. For the Python plugin, users can specify the following options:
 
-- PythonScripts: This option allows users to provide a list of Python scripts, which can be used to process or generate data. The list can be provided as a double-column-separated list like ``"scriptA.py:scriptB.py"``.
+- **PythonScripts**: This option allows users to provide a list of Python scripts, which can be used to process or generate data. The list can be provided as a double-column-separated list like ``"scriptA.py:scriptB.py"``.
 
 The GeoGate can create its own export state, which is the basic data object utilized by the ESMF library for exchanging data among model components. In this scenario, users must provide the following additional run-time configuration options.
 
 .. note::
   More information about the ESMF State class can be found in the `ESMF reference manual <https://earthsystemmodeling.org/docs/nightly/develop/ESMF_refdoc/node4.html#SECTION04070000000000000000>`_.
 
-- ExportMeshFile: This refers to the ESMF mesh file that will be utilized to create the underlying mesh for the ESMF fields attached to the ESMF export state.
+- **ExportMeshFile**: This refers to the ESMF mesh file that will be utilized to create the underlying mesh for the ESMF fields attached to the ESMF export state.
 
-- ExportFields: This refers to the list of export fields that will be created on the GeoGate export state. You can provide the list in one of two formats: as a double-column-separated list (e.g., "fieldA:fieldB") or as a YAML-formatted list (e.g., [fieldA, fieldB]), which is applicable if you are using ESMX as a driver component.
+- **ExportFields**: This refers to the list of export fields that will be created on the GeoGate export state. You can provide the list in one of two formats: as a double-column-separated list (e.g., "fieldA:fieldB") or as a YAML-formatted list (e.g., [fieldA, fieldB]), which is applicable if you are using ESMX as a driver component.
 
 .. note::
   ESMF supports a custom unstructured grid file format for describing meshes. This format is more compatible than the SCRIP format with the methods used to create an ESMF Mesh object, which reduces the amount of conversion required to create a Mesh. For more information about the format of the ESMF Mesh file, refer to the `ESMF reference documentation <https://earthsystemmodeling.org/docs/nightly/develop/ESMF_refdoc/node3.html#SECTION03028200000000000000>`_.
 
-- ImportOnExportMesh: When set to ``.true.``, GeoGate remaps import fields (e.g., ocean fields flowing into an ATM component) from their native mesh to the export mesh before the Python script executes. This ensures that both import and export fields share the same spatial decomposition, which is required for MPI-parallel gather/scatter operations in multi-rank Python scripts.
+- **ImportOnExportMesh**: When set to ``.true.``, GeoGate remaps import fields (e.g., ocean fields flowing into an ATM component) from their native mesh to the export mesh before the Python script executes. This ensures that both import and export fields share the same spatial decomposition, which is required for MPI-parallel gather/scatter operations in multi-rank Python scripts.
 
-- PreloadPythonModules: A list of Python statements executed **once** at startup, before the first coupling timestep. This is the preferred place to import heavy Python modules—such as ``torch``, ``aurora``, or domain-specific libraries—so that the import cost is paid only once rather than on every coupling step. Statements are joined with newlines and passed to the Python interpreter as a single script block. Example:
+- **PreloadPythonModules**: A list of Python statements executed **once** at startup, before the first coupling timestep. This is the preferred place to import heavy Python modules—such as ``torch``, ``aurora``, or domain-specific libraries—so that the import cost is paid only once rather than on every coupling step. Statements are joined with newlines and passed to the Python interpreter as a single script block. Example:
 
   .. code-block:: yaml
 
@@ -55,9 +55,9 @@ The GeoGate can create its own export state, which is the basic data object util
         - "import numpy as np"
         - "from aurora import AuroraPretrained"
 
-- KeepFieldList: A colon-separated list of field names that GeoGate should retain from the import state. When provided, only the named fields are accessible under ``channels/<direction>/<comp>/data/fields/``; all other import fields are discarded. If ``KeepFieldList`` is given, ``RemoveFieldList`` is ignored. Example: ``"So_t:So_omask"``.
+- **KeepFieldList**: A colon-separated list of field names that GeoGate should retain from the import state. When provided, only the named fields are accessible under ``channels/<direction>/<comp>/data/fields/``; all other import fields are discarded. If ``KeepFieldList`` is given, ``RemoveFieldList`` is ignored. Example: ``"So_t:So_omask"``.
 
-- DebugMode: When set to ``.true.`` (also accepts ``true`` or ``T``), GeoGate writes each Conduit node to a JSON file on disk and emits additional diagnostic log messages. This is useful for inspecting the exact structure and content of ``my_node`` during development.
+- **DebugMode**: When set to ``.true.`` (also accepts ``true`` or ``T``), GeoGate writes each Conduit node to a JSON file on disk and emits additional diagnostic log messages. This is useful for inspecting the exact structure and content of ``my_node`` during development.
 
 =======================
 Interacting with Python
