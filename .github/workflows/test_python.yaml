@@ -57,15 +57,20 @@ jobs:
 
     # geogate_plot.py needs matplotlib in the same Python environment that
     # GeoGate's embedded interpreter loads (the Spack-provided Python pulled
-    # in by conduit+python/paraview+python). Installed with --user since the
-    # Spack view is otherwise read-only to the runner user.
+    # in by conduit+python/paraview+python). We resolve that Python's actual
+    # install prefix explicitly rather than relying on `module load`/PATH,
+    # since after `spack env activate` the first `python3` on PATH is
+    # Spack's own internal bootstrap interpreter (python-venv), which ships
+    # without pip on purpose. --user is used since the Spack view is
+    # otherwise read-only to the runner user.
     - name: Install Python Plotting Dependencies
       run: |
         . ${{ github.workspace }}/app/spack/share/spack/setup-env.sh
-        . $(spack location -i lmod)/lmod/lmod/init/bash
         spack env activate test
-        module load conduit
-        python3 -m pip install --user --quiet matplotlib
+        python_bin="$(spack location -i python)/bin/python3"
+        echo "Using $python_bin"
+        $python_bin -m ensurepip --upgrade --user
+        $python_bin -m pip install --user --quiet matplotlib
       shell: bash
 
     - name: Install CDEPS
