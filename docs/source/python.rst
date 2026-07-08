@@ -198,9 +198,79 @@ GeoGate exposes the component's MPI communicator through ``my_node`` so that Pyt
   rank    = comm.Get_rank()
   size    = comm.Get_size()
 
+**ESMF Mesh and 1-D field arrays**
+
+GeoGate uses an ESMF Mesh object internally to represent the grid geometry and topology of each component. Because ESMF fields defined on unstructured meshes are stored in a flat 1-D array (one value per mesh element or mesh node), all field arrays exposed to Python through the Conduit node are **always one-dimensional**, regardless of the logical shape of the underlying grid. Reshaping to a 2-D or 3-D array for further processing must be done explicitly in the Python script once the global domain is assembled.
+
 Each rank's script invocation receives only the local domain slice of each field. A common pattern is to designate rank 0 as the coordinator: it gathers field data from all ranks via ``Gatherv``, performs the computation (or delegates it to a persistent background server over a Unix socket), and then distributes the results back to all ranks via ``Scatterv``.
 
-When the ATM component runs on multiple PETs and needs to access ocean fields that are natively on the OCN mesh, set ``ImportOnExportMesh: .true.`` to have CMEPS remap the ocean fields onto the ATM export mesh before the Python script runs. This guarantees that import and export fields share the same MPI decomposition, so the same ``field_counts`` and ``field_displs`` arrays can be used for both the gather (ocean → script) and scatter (script → ATM) steps.
+**Building the scatter layout: field_counts and field_displs**
+
+Before any collective operation, every rank must know how many elements each rank owns. The ``field_counts`` array holds the local element count for each rank and ``field_displs`` holds the displacement (starting offset) of each rank's data in the global flat buffer. These are computed with a single ``Allgather`` call using an actual field array as the reference — never from coordinate arrays, which may contain extra rows (see the note above on south-pole vertices):
+
+.. code-block:: python
+
+  import numpy as np
+
+  # Read any field to determine the local element count for this rank.
+  local_field = np.asarray(my_channel['data/fields/fieldA/values'])
+  local_n     = np.array([len(local_field)], dtype=np.int32)
+
+  field_counts = np.empty(size, dtype=np.int32)
+  comm.Allgather(local_n, field_counts)
+
+  # field_displs[i] is the start index of rank i's data in the global buffer.
+  field_displs = np.concatenate([[0], np.cumsum(field_counts[:-1])]).astype(np.int32)
+  total_n      = int(np.sum(field_counts))
+
+**Gathering a field from all ranks to root (Gatherv)**
+
+Once ``field_counts`` and ``field_displs`` are known, use ``Gatherv`` to assemble the full global field on rank 0:
+
+.. code-block:: python
+
+  local_data  = np.ascontiguousarray(local_field, dtype=np.float64)
+  global_data = np.empty(total_n, dtype=np.float64) if rank == 0 else None
+
+  comm.Gatherv(
+      local_data,
+      [global_data, field_counts, field_displs, MPI.DOUBLE],
+      root=0,
+  )
+
+  # Rank 0 now holds the full 1-D global array.  Reshape as needed, e.g.:
+  if rank == 0:
+      global_2d = global_data.reshape((ny, nx))
+
+**Scattering a result field from root to all ranks (Scatterv)**
+
+After processing on rank 0, distribute the result back to each rank's local slice:
+
+.. code-block:: python
+
+  local_result = np.empty(int(field_counts[rank]), dtype=np.float64)
+
+  comm.Scatterv(
+      [np.ascontiguousarray(global_result, dtype=np.float64),
+       field_counts, field_displs, MPI.DOUBLE] if rank == 0 else None,
+      local_result,
+      root=0,
+  )
+
+  # Each rank now holds its local slice of the result field.
+  my_node_return['data/fields/fieldA/values'] = local_result
+
+.. warning::
+  The code snippets above illustrate a general gather/scatter pattern and are
+  provided as a starting point only. The exact implementation — how
+  ``field_counts`` and ``field_displs`` are computed, how the global array is
+  reordered before scatter, and which fields are gathered or scattered — is
+  **application-specific** and depends on the mesh type, the MPI decomposition
+  used by the model, and the requirements of the processing step. These
+  examples must be carefully adapted to each use case and should not be used
+  verbatim without verifying that the assumptions hold for your configuration.
+
+When the ATM component runs on multiple PETs and needs to access ocean fields that are natively on the OCN mesh, set ``ImportOnExportMesh: .true.`` to have CMEPS remap the ocean fields onto the ATM export mesh before the Python script runs. This guarantees that import and export fields share the same MPI decomposition, so the same ``field_counts`` and ``field_displs`` arrays can be reused for both the gather (ocean → script) and scatter (script → ATM) steps.
 
 Persistent server pattern
 --------------------------
