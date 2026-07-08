@@ -16,6 +16,7 @@ module geogate_phases_python
   use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMBarrier, ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_MAXSTR, ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH
   use ESMF, only: ESMF_UtilStringLowerCase, ESMF_FieldBundleIsCreated
+  use ESMF, only: ESMF_TraceRegionEnter, ESMF_TraceRegionExit
 
   use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_GetAttribute
   use NUOPC_Model, only: NUOPC_ModelGet
@@ -29,6 +30,7 @@ module geogate_phases_python
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
   use geogate_python_interface, only: conduit_fort_to_py_to_fort
+  use geogate_python_interface, only: geogate_python_preload
 
   implicit none
   private
@@ -67,6 +69,7 @@ contains
     type(C_PTR) :: node, nodeOut
     type(C_PTR) :: info
     integer :: n, mpiComm, localPet, petCount
+    integer :: itemCount
     logical :: isPresent, isSet
     logical, save :: first_time = .true.
     type(InternalState) :: is_local
@@ -74,14 +77,19 @@ contains
     type(ESMF_Clock) :: clock
     type(ESMF_VM) :: vm
     integer, save :: timeStep = 0
-    logical :: impOnExpMesh
+    logical, save :: remapImportFields = .false.
     character(ESMF_MAXSTR) :: namespace
     character(ESMF_MAXSTR) :: cvalue, message, timeStr
+    character(ESMF_MAXSTR), save, allocatable :: preloadModuleList(:)
+    character(len=4096) :: preload_script
     character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_run) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('geogate_phases_python_run')
 
     ! Get internal state
     nullify(is_local%wrap)
@@ -108,6 +116,29 @@ contains
 
     ! Initialize
     if (first_time) then
+       ! Initialize Python interpreter and run user-specified pre-import statements
+       ! at C++ level before the first script execution
+       itemCount = 0
+       call NUOPC_CompAttributeGet(gcomp, name="PreloadPythonModules", itemCount=itemCount, &
+         isPresent=isPresent, isSet=isSet, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (isPresent .and. isSet .and. itemCount > 0) then
+          allocate(preloadModuleList(itemCount))
+          call NUOPC_CompAttributeGet(gcomp, name="PreloadPythonModules", valueList=preloadModuleList, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          preload_script = ''
+          do n = 1, itemCount
+             write(message, fmt='(A,I2,A)') trim(subname)//": PreloadPythonModules(", n, ") = "//trim(preloadModuleList(n))
+             call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+             if (n > 1) preload_script = trim(preload_script)//char(10)
+             preload_script = trim(preload_script)//trim(preloadModuleList(n))
+          end do
+          call geogate_python_preload(trim(preload_script))
+          deallocate(preloadModuleList)
+       else
+          call geogate_python_preload()
+       end if
+
        ! Python script/s
        call NUOPC_CompAttributeGet(gcomp, name="PythonScripts", value=cvalue, &
          isPresent=isPresent, isSet=isSet, rc=rc)
@@ -124,11 +155,11 @@ contains
        call NUOPC_CompAttributeGet(gcomp, name='ImportOnExportMesh', value=cvalue, &
          isPresent=isPresent, isSet=isSet, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
-       impOnExpMesh = .false.
+       remapImportFields = .false.
        if (isPresent .and. isSet) then
-          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') impOnExpMesh = .true.
+          if (trim(cvalue) .eq. '.true.' .or. trim(cvalue) .eq. 'true' .or. trim(adjustl(cvalue)) .eq. 'T') remapImportFields = .true.
        end if
-       write(message, fmt='(A,L)') trim(subname)//' : ImportOnExportMesh = ', impOnExpMesh
+       write(message, fmt='(A,L)') trim(subname)//': ImportOnExportMesh = ', remapImportFields
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
 
        ! Set flag
@@ -158,12 +189,13 @@ contains
           call FB2Node(is_local%wrap%FBImp(n), "import", trim(is_local%wrap%compName(n)), myMeshImp(n), node, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           ! Interpolate import fields to export mesh and add them to node
-          if (impOnExpMesh) then
+          if (remapImportFields) then
              ! Interpolate import fields to export mesh and create new FB
              call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
                'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
                is_local%wrap%meshExp, is_local%wrap%RHImp2Exp(n), rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
              ! Load content of FB to Conduit node
              call FB2Node(is_local%wrap%FBImpIntp(n), "import_on_export_grid", &
                trim(is_local%wrap%compName(n)), myMeshExp, node, rc=rc)
@@ -223,6 +255,9 @@ contains
     ! Increase time step
     timeStep = timeStep+1
 
+    ! Exit trace region
+    call ESMF_TraceRegionExit('geogate_phases_python_run')
+
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_python_run
@@ -252,6 +287,9 @@ contains
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
+
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('FB2Node')
 
     ! Add channel
     channel = conduit_node_fetch(node, "channels/"//trim(parent)//"/"//trim(compName))
@@ -339,8 +377,11 @@ contains
        nullify(farrayPtr)
     end do
 
-    ! Clean memeory
+    ! Clean memory
     deallocate(fieldNameList)
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('FB2Node')
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
@@ -370,6 +411,9 @@ contains
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(compName), ESMF_LOGMSG_INFO)
+
+    ! Enter trace region
+    call ESMF_TraceRegionEnter('Node2FB')
 
     ! Create node with fields
     if (conduit_node_has_path(node, "data/fields")) then
@@ -418,6 +462,9 @@ contains
           end if
        end do
     end if
+
+    ! Exit trace region
+    call ESMF_TraceRegionExit('Node2FB')
 
     call ESMF_LogWrite(subname//' done for '//trim(compName), ESMF_LOGMSG_INFO)
 
