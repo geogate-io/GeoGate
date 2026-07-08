@@ -1,14 +1,7 @@
 # Example GeoGate Python plugin script - one-way interaction (COP2).
-#
-# Reads the Sa_u10m_x2/Sa_v10m_x2 fields produced by geogate_modify.py
-# (through the "cop1" import channel) and renders a simple 2D spatial plot
-# of each. This script has no my_node_return, so it must be listed on a
-# COP that has no ExportFields configured (see esmxRun_python.yaml).
-#
-# Plotting needs the whole global field assembled at once. Rather than
-# gather/scatter across PETs from Python, this script relies on the COP it
-# runs on being pinned to a single PET -- see the "Limitations" note in
-# docs/source/python.rst.
+# Plots the Sa_u10m/Sa_v10m fields COP1 scaled and re-exported. One-way
+# (no my_node_return), and pinned to a single PET since plotting needs the
+# whole global field at once -- see "Limitations" in docs/source/python.rst.
 
 import os
 
@@ -21,7 +14,7 @@ from conduit import Node
 NX_ATM = 1440
 NY_ATM = 721
 OUTPUT_DIR = "output"
-FIELDS = ["Sa_u10m_x2", "Sa_v10m_x2"]
+FIELDS = ["Sa_u10m", "Sa_v10m"]
 
 
 def find_import_channel(node, comp_name):
@@ -49,7 +42,7 @@ for name in FIELDS:
     ax.set_xlabel("longitude")
     ax.set_ylabel("latitude")
 
-    ofile = os.path.join(OUTPUT_DIR, "{}_{}.png".format(name, time_str.replace(":", "")))
+    ofile = os.path.join(OUTPUT_DIR, "{}_scaled_{}.png".format(name, time_str.replace(":", "")))
     fig.savefig(ofile, dpi=120, bbox_inches="tight")
     plt.close(fig)
     print("[geogate_plot] wrote {}".format(ofile), flush=True)

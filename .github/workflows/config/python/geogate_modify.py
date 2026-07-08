@@ -1,14 +1,6 @@
 # Example GeoGate Python plugin script - two-way interaction (COP1).
-#
-# Reads Sa_u10m/Sa_v10m provided by DATM through the "atm" import channel,
-# scales them by FACTOR, and returns the result to GeoGate so it can be
-# exported and consumed downstream by another GeoGate instance
-# (see geogate_plot.py / esmxRun_python.yaml).
-#
-# GeoGate exposes two Conduit nodes as Python globals for each script:
-#   my_node        - hierarchical view of import/export data
-#   my_node_return - node this script must populate to send data back
-# See docs/source/python.rst for the full node layout.
+# Scales Sa_u10m/Sa_v10m from DATM and returns them for export to COP2.
+# See docs/source/python.rst for the my_node / my_node_return layout.
 
 from conduit import Node
 
@@ -26,9 +18,11 @@ def find_import_channel(node, comp_name):
 
 atm_fields = find_import_channel(my_node, "atm")["data/fields"]
 
+# Same names on the way out: ExportFields must match a StandardName known
+# to the NUOPC field dictionary, and import/export are separate states.
 my_node_return = Node()
 for name in SCALE_FIELDS:
-    my_node_return["data/fields/{}_x2/values".format(name)] = atm_fields[name]["values"] * FACTOR
+    my_node_return["data/fields/{}/values".format(name)] = atm_fields[name]["values"] * FACTOR
 
 print("[geogate_modify] pet {}/{}: scaled {} by {}".format(
     my_node["mpi/localpet"], my_node["mpi/petcount"], SCALE_FIELDS, FACTOR), flush=True)
