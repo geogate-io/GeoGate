@@ -34,10 +34,11 @@ GeoGate Documentation
 
 .. toctree::
    :caption: User Documentation
-   :maxdepth: 2 
+   :maxdepth: 2
    :numbered:
 
-   plugins 
+   plugins
+   testing
 
 Indices and tables
 ==================
