@@ -38,13 +38,13 @@ The GeoGate can create its own export state, which is the basic data object util
 
 - **ExportMeshFile**: This refers to the ESMF mesh file that will be utilized to create the underlying mesh for the ESMF fields attached to the ESMF export state.
 
+.. note::
+  ESMF supports a custom unstructured grid file format for describing meshes. This format is more compatible than the SCRIP format with the methods used to create an ESMF Mesh object, which reduces the amount of conversion required to create a Mesh. For more information about the format of the ESMF Mesh file, refer to the `ESMF reference documentation <https://earthsystemmodeling.org/docs/nightly/develop/ESMF_refdoc/node3.html#SECTION03028200000000000000>`_.
+
 - **ExportFields**: This refers to the list of export fields that will be created on the GeoGate export state. You can provide the list in one of two formats: as a double-column-separated list (e.g., "fieldA:fieldB") or as a YAML-formatted list (e.g., [fieldA, fieldB]), which is applicable if you are using ESMX as a driver component.
 
 .. note::
   Unlike ``PythonScripts`` and ``KeepFieldList``, which GeoGate reads as a single string and splits internally, ``ExportFields`` is read through NUOPC's own multi-value attribute API. When using ESMX, this means the value must be given as a YAML list (e.g., ``[fieldA, fieldB]``); a double-column-separated string arrives as a single item and fails with ``is not a StandardName in the NUOPC_FieldDictionary!``.
-
-.. note::
-  ESMF supports a custom unstructured grid file format for describing meshes. This format is more compatible than the SCRIP format with the methods used to create an ESMF Mesh object, which reduces the amount of conversion required to create a Mesh. For more information about the format of the ESMF Mesh file, refer to the `ESMF reference documentation <https://earthsystemmodeling.org/docs/nightly/develop/ESMF_refdoc/node3.html#SECTION03028200000000000000>`_.
 
 - **ImportOnExportMesh**: When set to ``.true.``, GeoGate remaps import fields (e.g., ocean fields flowing into an ATM component) from their native mesh to the export mesh before the Python script executes. This ensures that both import and export fields share the same spatial decomposition, which is required for MPI-parallel gather/scatter operations in multi-rank Python scripts.
 
