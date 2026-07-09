@@ -9,7 +9,6 @@ env:
   esmf: 8.8.0
   paraview: 5.13.2
   spack: prereleases/v1.0.0-alpha.4
-  esmx_config: esmxRun_python.yaml
   esmx_np: 5
 
 on:
@@ -90,7 +89,6 @@ jobs:
         cdeps_dir: ${{ github.workspace }}/app/cdeps/install
         geogate_dir: ${{ github.workspace }}/app/geogate/install
         config_dir: python
-        esmx_config: ${{ env.esmx_config }}
         esmx_np: ${{ env.esmx_np }}
 
     - name: Upload Artifacts

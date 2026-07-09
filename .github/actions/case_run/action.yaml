@@ -26,11 +26,6 @@ inputs:
     description: 'Test-specific subdirectory under .github/workflows/config (e.g. catalyst, python)'
     required: true
     type: string
-  esmx_config:
-    description: 'Name of the ESMX run configuration file (relative to .github/workflows/config/<config_dir>)'
-    required: false
-    type: string
-    default: 'esmxRun.yaml'
   esmx_np:
     description: 'Number of MPI tasks to use for the simulation'
     required: false
@@ -121,7 +116,7 @@ runs:
       module load conduit
       module load paraview
       echo "::group::Update esmxRun.yaml"
-      cat ${{ inputs.install_dir }}/geogate/.github/workflows/config/${{ inputs.config_dir }}/${{ inputs.esmx_config }} |
+      cat ${{ inputs.install_dir }}/geogate/.github/workflows/config/${{ inputs.config_dir }}/esmxRun.yaml |
         sed -e "s#__CATALYST_LOAD_PATH__#$ParaView_DIR/lib/catalyst#g" |
         sed -e "s#__CATALYST_SCRIPT__#${{ env.catalyst_script }}#g" > esmxRun.yaml
       cat esmxRun.yaml
