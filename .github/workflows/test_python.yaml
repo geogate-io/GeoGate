@@ -61,15 +61,18 @@ jobs:
     # since after `spack env activate` the first `python3` on PATH is
     # Spack's own internal bootstrap interpreter (python-venv), which ships
     # without pip on purpose. --user is used since the Spack view is
-    # otherwise read-only to the runner user.
-    - name: Install Python Plotting Dependencies
+    # otherwise read-only to the runner user. mpi4py is built against
+    # whatever `mpicc` is on PATH, which is the apt-installed OpenMPI that
+    # Spack also detected as an external package -- the same MPI esmx_app
+    # itself runs under, so the two stay ABI-compatible.
+    - name: Install Python Plugin Dependencies
       run: |
         . ${{ github.workspace }}/app/spack/share/spack/setup-env.sh
         spack env activate test
         python_bin="$(spack location -i python)/bin/python3"
-        echo "Using $python_bin"
+        echo "Using $python_bin, mpicc: $(which mpicc)"
         $python_bin -m ensurepip --upgrade --user
-        $python_bin -m pip install --user --quiet matplotlib
+        $python_bin -m pip install --user --quiet matplotlib mpi4py
       shell: bash
 
     - name: Install CDEPS

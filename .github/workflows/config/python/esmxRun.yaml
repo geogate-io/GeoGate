@@ -61,26 +61,32 @@ OCN:
     ScalarFieldIdxNextSwCday: 3
     ScalarFieldName: cpl_scalars
     <<: *anchor
-# COP1: receives raw DATM fields and runs a two-way Python script
-# (geogate_modify.py) that scales them and returns the result for export.
-# Element-wise scaling is embarrassingly parallel, so this instance can
-# safely run on more than one PET.
+# COP1: receives fields from both DATM and DOCN (exercises GeoGate with
+# multiple incoming connections) and runs a two-way Python script
+# (geogate_modify.py) that derives Sa_wspd10m from Sa_u10m/Sa_v10m and
+# turns So_t into a spatial anomaly. The anomaly needs the domain-wide mean
+# of So_t, so the script uses mpi4py (via my_node["mpi/comm"]) to Allreduce
+# across COP1's PETs rather than averaging each PET's local slice alone --
+# this also exercises the MPI path called out in the "Limitations" note in
+# docs/source/python.rst.
 COP1:
   model: geogate
   petList: 2-3
   attributes:
     Verbosity: low
     Diagnostic: 0
-    KeepFieldList: Sa_u10m:Sa_v10m
+    KeepFieldList: Sa_u10m:Sa_v10m:So_t
     PythonScripts: geogate_modify.py
+    # DATM and DOCN both run on the same 1440x721 grid in this test, so
+    # mesh_atm.nc is a valid export mesh for So_t too.
     ExportMeshFile: input/mesh_atm.nc
     # Must be a YAML list, not a colon-separated string: unlike
     # KeepFieldList/PythonScripts, GeoGate reads ExportFields through
     # NUOPC's own multi-value attribute API with no manual splitting, so a
     # colon-joined string arrives as a single (invalid) StandardName.
-    ExportFields: [Sa_u10m, Sa_v10m]
+    ExportFields: [Sa_u10m, Sa_v10m, Sa_wspd10m, So_t]
     <<: *anchor
-# COP2: imports COP1's scaled fields and runs a one-way Python script
+# COP2: imports COP1's fields and runs a one-way Python script
 # (geogate_plot.py) that renders them. No ExportFields is set, so GeoGate
 # does not build an export state and the phase runs the import-only code
 # path. Plotting needs the whole global field at once, so, per the
@@ -92,6 +98,6 @@ COP2:
   attributes:
     Verbosity: low
     Diagnostic: 0
-    KeepFieldList: Sa_u10m:Sa_v10m
+    KeepFieldList: Sa_u10m:Sa_v10m:Sa_wspd10m:So_t
     PythonScripts: geogate_plot.py
     <<: *anchor

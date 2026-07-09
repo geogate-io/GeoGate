@@ -1,7 +1,8 @@
 # Example GeoGate Python plugin script - one-way interaction (COP2).
-# Plots the Sa_u10m/Sa_v10m fields COP1 scaled and re-exported. One-way
-# (no my_node_return), and pinned to a single PET since plotting needs the
-# whole global field at once -- see "Limitations" in docs/source/python.rst.
+# Plots the Sa_u10m/Sa_v10m/Sa_wspd10m/So_t fields COP1 exported (So_t is a
+# spatial anomaly, not raw SST). One-way (no my_node_return), and pinned to
+# a single PET since plotting needs the whole global field at once -- see
+# "Limitations" in docs/source/python.rst.
 
 import os
 
@@ -14,7 +15,7 @@ from conduit import Node
 NX_ATM = 1440
 NY_ATM = 721
 OUTPUT_DIR = "output"
-FIELDS = ["Sa_u10m", "Sa_v10m"]
+FIELDS = ["Sa_u10m", "Sa_v10m", "Sa_wspd10m", "So_t"]
 
 
 def find_import_channel(node, comp_name):
@@ -42,7 +43,7 @@ for name in FIELDS:
     ax.set_xlabel("longitude")
     ax.set_ylabel("latitude")
 
-    ofile = os.path.join(OUTPUT_DIR, "{}_scaled_{}.png".format(name, time_str.replace(":", "")))
+    ofile = os.path.join(OUTPUT_DIR, "{}_{}.png".format(name, time_str.replace(":", "")))
     fig.savefig(ofile, dpi=120, bbox_inches="tight")
     plt.close(fig)
     print("[geogate_plot] wrote {}".format(ofile), flush=True)
