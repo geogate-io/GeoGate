@@ -204,13 +204,16 @@ contains
        end do
     end if
 
-    ! Query name space from export state
-    call NUOPC_GetAttribute(is_local%wrap%NStateExp, name="Namespace", value=namespace, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    namespace = ESMF_UtilStringLowerCase(trim(namespace))
-
     ! Check export state
     if (ESMF_FieldBundleIsCreated(is_local%wrap%FBExp)) then
+       ! Query name space from export state
+       ! NStateExp is only created (in RealizeProvided) when ExportFields/
+       ! ExportMeshFile are configured, i.e. exactly when FBExp is created,
+       ! so this query must stay inside this branch.
+       call NUOPC_GetAttribute(is_local%wrap%NStateExp, name="Namespace", value=namespace, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       namespace = ESMF_UtilStringLowerCase(trim(namespace))
+
        ! Add export data to node
        call FB2Node(is_local%wrap%FBExp, "export", trim(namespace), myMeshExp, node, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
