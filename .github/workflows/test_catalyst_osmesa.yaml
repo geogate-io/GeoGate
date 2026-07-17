@@ -8,7 +8,7 @@ env:
   coupling: spmd
   esmf: 8.8.0
   paraview: 5.13.2
-  spack: prereleases/v1.0.0-alpha.4
+  spack: v1.2.1
   catalyst_script: "pv_write.py:pv_two_channel.py" 
 
 on:
@@ -38,7 +38,7 @@ on:
         description: 'Spack version'
         required: false
         type: string
-        default: 'prereleases/v1.0.0-alpha.4'
+        default: 'v1.2.1'
   push:
     branches: [ main ]
   pull_request:

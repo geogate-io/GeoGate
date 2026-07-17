@@ -80,10 +80,13 @@ spack -e ${env_dir} config add "concretizer:targets:granularity:generic"
 spack -e ${env_dir} config add "concretizer:targets:host_compatible:false"
 spack -e ${env_dir} config add "concretizer:unify:when_possible"
 spack -e ${env_dir} config add "packages:all:target:['x86_64']"
+spack -e ${env_dir} config add "packages:c:require:['${comp}']"
+spack -e ${env_dir} config add "packages:cxx:require:['${comp}']"
+spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
 IFS=':' read -r -a array <<< "${deps}"
 for d in "${array[@]}"
 do
-  spack add ${d}%${comp}
+  spack add "${d}"
 done
 cat ${env_dir}/spack.yaml
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
