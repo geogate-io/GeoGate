@@ -45,6 +45,11 @@ inputs:
     required: false
     type: string
     default: 'develop'
+  cache_version:
+    description: 'Optional suffix to bust a stuck/unreadable cache entry (e.g. after a GitHub Actions cache service incident) without touching other backends caches'
+    required: false
+    type: string
+    default: ''
 outputs:
   cache_name:
     description: 'Name of the stored cache'
@@ -110,7 +115,11 @@ runs:
       compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
       echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${{ inputs.conduit }}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
-      echo "CACHE_NAME=spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}" >> $GITHUB_OUTPUT
+      CACHE_NAME="spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}"
+      if [ -n "${{ inputs.cache_version }}" ]; then
+        CACHE_NAME="${CACHE_NAME}-v${{ inputs.cache_version }}"
+      fi
+      echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
     shell: bash
 
   - name: Checkout Component Repository
@@ -127,9 +136,23 @@ runs:
         /home/runner/.spack
       key: ${{ steps.set-env.outputs.CACHE_NAME }}
 
+  # GitHub Actions cache service occasionally logs "Cache hit" but then fails to
+  # download the entry ("Cache not found for input keys"), see
+  # https://github.com/actions/cache/issues/1621. Retry once before paying for a
+  # full rebuild, since this is usually a transient service hiccup.
+  - name: Retry Restore Cached Dependencies
+    id: restore-cache-retry
+    if: steps.restore-cache.outputs.cache-hit != 'true'
+    uses: actions/cache/restore@v4
+    with:
+      path: |
+        ${{ github.workspace }}/app/spack
+        /home/runner/.spack
+      key: ${{ steps.set-env.outputs.CACHE_NAME }}
+
   - name: Create Spack Environment and Install Dependencies
     id: spack-env
-    if: steps.restore-cache.outputs.cache-hit != 'true'
+    if: steps.restore-cache.outputs.cache-hit != 'true' && steps.restore-cache-retry.outputs.cache-hit != 'true'
     run: |
       ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
         -b "${{ inputs.backend }}" \
@@ -141,7 +164,7 @@ runs:
 
   - name: Save Dependencies to Cache
     id: save-cache
-    if: steps.restore-cache.outputs.cache-hit != 'true' &&  steps.spack-env.outcome == 'success'
+    if: steps.restore-cache.outputs.cache-hit != 'true' && steps.restore-cache-retry.outputs.cache-hit != 'true' && steps.spack-env.outcome == 'success'
     uses: actions/cache/save@v4
     with:
       path: |
