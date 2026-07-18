@@ -83,6 +83,10 @@ spack -e ${env_dir} config add "packages:all:target:['x86_64']"
 spack -e ${env_dir} config add "packages:c:require:['${comp}']"
 spack -e ${env_dir} config add "packages:cxx:require:['${comp}']"
 spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
+# Silences the deprecated implicit-python-attachment warning for python_pip
+# build_system packages (e.g. meson) by pinning which python satisfies it,
+# instead of letting Spack core guess (see spack/spack#51460).
+spack -e ${env_dir} config add "packages:python:require:['python@3.12:']"
 IFS=':' read -r -a array <<< "${deps}"
 for d in "${array[@]}"
 do
