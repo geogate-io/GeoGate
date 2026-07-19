@@ -1,8 +1,6 @@
 #!/bin/bash
 
-# Without this, `spack install ... | tee log.install` reports success (tee's
-# exit code) even when spack install itself fails partway through, letting a
-# broken/incomplete build get cached as if it were good.
+set -e
 set -o pipefail
 
 # Command line arguments
