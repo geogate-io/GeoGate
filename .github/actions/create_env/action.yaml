@@ -45,11 +45,6 @@ inputs:
     required: false
     type: string
     default: 'develop'
-  cache_version:
-    description: 'Optional suffix to bust a stuck/unreadable cache entry (e.g. after a GitHub Actions cache service incident) without touching other backends caches'
-    required: false
-    type: string
-    default: ''
 outputs:
   cache_name:
     description: 'Name of the stored cache'
@@ -116,9 +111,6 @@ runs:
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
       echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
       CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}"
-      if [ -n "${{ inputs.cache_version }}" ]; then
-        CACHE_NAME="${CACHE_NAME}-v${{ inputs.cache_version }}"
-      fi
       echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
     shell: bash
 

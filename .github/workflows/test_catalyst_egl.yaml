@@ -70,7 +70,6 @@ jobs:
         install_dir: ${{ github.workspace }}/app
         paraview: ${{ inputs.paraview || env.paraview }}
         spack: ${{ inputs.spack || env.spack }}
-        cache_version: '3'
 
     - name: Install GeoGate
       id: install-geogate
