@@ -51,6 +51,7 @@ on:
 jobs:
   run-app:
     runs-on: ubuntu-24.04
+    timeout-minutes: 360
     steps:
     - name: Checkout Component Repository
       uses: actions/checkout@v4

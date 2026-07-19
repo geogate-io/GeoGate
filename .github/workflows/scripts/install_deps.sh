@@ -71,6 +71,11 @@ spack config add "config:connect_timeout:60"
 cat ~/.spack/config.yaml
 echo "::endgroup::"
 
+echo "::group::Add Public Build Cache Mirror"
+spack mirror add spack-public https://cache.spack.io
+spack buildcache keys --install --trust
+echo "::endgroup::"
+
 # Create new spack environment
 echo "::group::Create Spack Environment and Install Dependencies"
 spack env create test
@@ -83,9 +88,6 @@ spack -e ${env_dir} config add "packages:all:target:['x86_64']"
 spack -e ${env_dir} config add "packages:c:require:['${comp}']"
 spack -e ${env_dir} config add "packages:cxx:require:['${comp}']"
 spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
-# Silences the deprecated implicit-python-attachment warning for python_pip
-# build_system packages (e.g. meson) by pinning which python satisfies it,
-# instead of letting Spack core guess (see spack/spack#51460).
 spack -e ${env_dir} config add "packages:python:require:['python@3.12:']"
 IFS=':' read -r -a array <<< "${deps}"
 for d in "${array[@]}"
@@ -94,7 +96,7 @@ do
 done
 cat ${env_dir}/spack.yaml
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
-spack --color always install -j3 2>&1 | tee log.install
+spack --color always install -j4 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
 spack find -c
 echo "::endgroup::"
