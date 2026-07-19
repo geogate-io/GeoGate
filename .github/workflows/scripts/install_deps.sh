@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Without this, `spack install ... | tee log.install` reports success (tee's
+# exit code) even when spack install itself fails partway through, letting a
+# broken/incomplete build get cached as if it were good.
+set -o pipefail
+
 # Command line arguments
 while getopts b:c:d:i:s: flag
 do
@@ -69,11 +74,6 @@ spack config add "modules:default:enable:[tcl]"
 spack config add "config:url_fetch_method:curl"
 spack config add "config:connect_timeout:60"
 cat ~/.spack/config.yaml
-echo "::endgroup::"
-
-echo "::group::Add Public Build Cache Mirror"
-spack mirror add spack-public https://cache.spack.io
-spack buildcache keys --install --trust
 echo "::endgroup::"
 
 # Create new spack environment
