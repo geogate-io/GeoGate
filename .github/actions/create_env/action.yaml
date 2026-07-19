@@ -64,6 +64,7 @@ runs:
         tar \
         unzip \
         file \
+        gettext \
         gringo \
         llvm meson \
         build-essential \
@@ -109,7 +110,7 @@ runs:
     run: |
       compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
-      echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
+      echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^py-pandas~performance\"\"" >> $GITHUB_OUTPUT
       CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}"
       echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
     shell: bash
