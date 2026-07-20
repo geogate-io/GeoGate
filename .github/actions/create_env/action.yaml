@@ -65,6 +65,7 @@ runs:
         unzip \
         file \
         gettext \
+        autopoint \
         gringo \
         llvm meson \
         build-essential \
