@@ -94,7 +94,7 @@ do
 done
 cat ${env_dir}/spack.yaml
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
-spack --color always install -j4 2>&1 | tee log.install
+spack --color always install -j3 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
 spack find -c
 echo "::endgroup::"
