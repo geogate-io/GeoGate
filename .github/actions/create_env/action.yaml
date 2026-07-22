@@ -157,7 +157,7 @@ runs:
     id: spack-env
     if: steps.restore-cache.outputs.cache-hit != 'true' && steps.restore-cache-retry.outputs.cache-hit != 'true'
     run: |
-      ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
+      ${{ github.workspace }}/app/geogate/.github/actions/create_env/install_deps.sh \
         -b "${{ inputs.backend }}" \
         -c "${{ inputs.compiler }}" \
         -d "${{ steps.set-env.outputs.SPACK_PKGS }}" \
