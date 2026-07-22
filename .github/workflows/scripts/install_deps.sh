@@ -93,6 +93,7 @@ spack -e ${env_dir} config add "packages:all:target:['x86_64']"
 spack -e ${env_dir} config add "packages:c:require:['${comp}']"
 spack -e ${env_dir} config add "packages:cxx:require:['${comp}']"
 spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
+spack -e ${env_dir} config add "packages:hwloc:variants:~gl"
 spack -e ${env_dir} config add "packages:python:require:['python@3.12:']"
 spack -e ${env_dir} config add "packages:py-pandas:variants:~performance"
 pv_major=$(echo "${pv_ver}" | cut -d. -f1)
