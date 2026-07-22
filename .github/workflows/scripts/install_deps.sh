@@ -75,10 +75,18 @@ echo "::endgroup::"
 
 # Create config file (to fix possible FetchError issue)
 echo "::group::Create config.yaml"
-spack config add "modules:default:enable:[tcl]"
 spack config add "config:url_fetch_method:curl"
 spack config add "config:connect_timeout:60"
 cat ~/.spack/config.yaml
+echo "::endgroup::"
+
+# Create modules.yaml
+echo "::group::Create modules.yaml"
+spack config add "modules:default:enable:[lmod]"
+spack config add "modules:default:lmod:hash_length:0"
+spack config add "modules:default:lmod:core_compilers:['${comp}']"
+spack config add "modules:default:lmod:projections:all:'{name}/{version}'"
+cat ~/.spack/modules.yaml
 echo "::endgroup::"
 
 # Create new spack environment
@@ -111,6 +119,7 @@ cat ${env_dir}/spack.yaml
 spack --color always concretize --force --deprecated --reuse 2>&1 | tee log.concretize
 spack --color always install -j3 2>&1 | tee log.install
 spack --color always gc -y  2>&1 | tee log.clean
+spack module lmod refresh --delete-tree -y 2>&1 | tee log.module
 spack find -c
 echo "::endgroup::"
 
