@@ -14,7 +14,7 @@ inputs:
     description: 'Catalyst version'
     required: false
     type: string
-    default: 'master'
+    default: '2.1.0'
   compiler:
     description: 'Compiler type and version'
     required: false
@@ -24,7 +24,7 @@ inputs:
     description: 'Conduit version'
     required: false
     type: string
-    default: 'develop'
+    default: '0.9.7'
   esmf: 
     description: 'ESMF version, branch or tag like 8.8.0, develop or =8.5.0b23'
     required: false
@@ -39,7 +39,7 @@ inputs:
     description: 'ParaView version'
     required: false
     type: string
-    default: 'master'
+    default: '6.1.1'
   spack:
     description: 'Spack version'
     required: false
@@ -95,11 +95,10 @@ runs:
         mesa-common-dev \
         libglew-dev \
         libglfw3-dev \
-        libglm-dev"
-        #libosmesa6-dev \
-        #libegl1-mesa-dev \
-        #mesa-utils \
-        #mesa-utils-extra"
+        libglm-dev \
+        libssl-dev \
+        pkg-config \
+        libssh2-1-dev"
       echo "PKGS_LIST=$PKGS_LIST" >> $GITHUB_OUTPUT
 
       sudo apt-get -qq update
@@ -111,7 +110,17 @@ runs:
     run: |
       compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
-      echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^py-pandas~performance\"\"" >> $GITHUB_OUTPUT
+      paraview_major=`echo ${{ inputs.paraview }} | cut -d. -f1`
+      if [[ "$paraview_major" =~ ^[0-9]+$ ]] && [ "$paraview_major" -ge 6 ]; then
+        pv_render_variant="osmesa_fallback"
+      else
+        pv_render_variant="opengl2"
+      fi
+      SPACK_PKGS="\"\"lmod\":"
+      SPACK_PKGS+="\"esmf@${{ inputs.esmf }}+external-parallelio\":"
+      SPACK_PKGS+="\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":"
+      SPACK_PKGS+="\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+${pv_render_variant}+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\""
+      echo "SPACK_PKGS=$SPACK_PKGS" >> $GITHUB_OUTPUT
       CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}"
       echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
     shell: bash
@@ -153,6 +162,7 @@ runs:
         -c "${{ inputs.compiler }}" \
         -d "${{ steps.set-env.outputs.SPACK_PKGS }}" \
         -i "${{ inputs.install_dir }}" \
+        -p "${{ inputs.paraview }}" \
         -s "${{ inputs.spack }}"
     shell: bash
 

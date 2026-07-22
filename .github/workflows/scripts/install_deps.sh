@@ -4,13 +4,14 @@ set -e
 set -o pipefail
 
 # Command line arguments
-while getopts b:c:d:i:s: flag
+while getopts b:c:d:i:p:s: flag
 do
   case "${flag}" in
     b) pv_backend=${OPTARG};;
     c) comp=${OPTARG};;
     d) deps=${OPTARG};;
     i) install_dir=${OPTARG};;
+    p) pv_ver=${OPTARG};;
     s) spack_ver=${OPTARG};;
   esac
 done
@@ -36,8 +37,14 @@ if [[ -z "$spack_ver" || ! -z `echo $spack_ver | grep '^-'` ]]; then
   spack_ver="develop"
 fi
 
+if [ -z "$pv_ver" ]; then
+  echo "ParaView version is not given! Exiting ..."
+  exit
+fi
+
 # Print out arguments
 echo "PV Backend        : $pv_backend"
+echo "PV Version        : $pv_ver"
 echo "Compiler Version  : $comp"
 echo "Dependencies      : $deps"
 echo "Install Directory : $install_dir"
@@ -87,6 +94,13 @@ spack -e ${env_dir} config add "packages:c:require:['${comp}']"
 spack -e ${env_dir} config add "packages:cxx:require:['${comp}']"
 spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
 spack -e ${env_dir} config add "packages:python:require:['python@3.12:']"
+spack -e ${env_dir} config add "packages:py-pandas:variants:~performance"
+pv_major=$(echo "${pv_ver}" | cut -d. -f1)
+if [[ "$pv_major" =~ ^[0-9]+$ ]] && [ "$pv_major" -ge 6 ]; then
+  # ParaView 6.x bundles VTK built against HDF5 1.10+ (64-bit hid_t); HDF5 1.8.x
+  # (32-bit hid_t) causes an ABI mismatch, so pin a compatible version.
+  spack -e ${env_dir} config add "packages:hdf5:require:['@1.14']"
+fi
 IFS=':' read -r -a array <<< "${deps}"
 for d in "${array[@]}"
 do
