@@ -64,11 +64,11 @@ echo "::group::Find Compilers and Externals"
 spack compiler find
 spack external find --exclude cmake
 if [ "$pv_backend" == "egl" ]; then
-   echo "  egl:" >> /home/runner/.spack/packages.yaml
-   echo "    buildable: False" >> /home/runner/.spack/packages.yaml
-   echo "    externals:" >> /home/runner/.spack/packages.yaml
-   echo "    - spec: egl@1.5.0" >> /home/runner/.spack/packages.yaml
-   echo "      prefix: /usr" >> /home/runner/.spack/packages.yaml
+   spack config add "packages:egl:externals:[{'spec':'egl@1.5.0','prefix':'/usr'}]"
+   spack config add "packages:egl:buildable:false"
+   spack config add "packages:gl:require:[egl]"
+elif [ "$pv_backend" == "osmesa" ]; then
+   spack config add "packages:gl:require:[osmesa]"
 fi
 cat /home/runner/.spack/packages.yaml
 echo "::endgroup::"

@@ -119,7 +119,7 @@ runs:
       SPACK_PKGS="\"\"lmod\":"
       SPACK_PKGS+="\"esmf@${{ inputs.esmf }}+external-parallelio\":"
       SPACK_PKGS+="\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":"
-      SPACK_PKGS+="\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+${pv_render_variant}+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\""
+      SPACK_PKGS+="\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+${pv_render_variant}+cdi ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\""
       echo "SPACK_PKGS=$SPACK_PKGS" >> $GITHUB_OUTPUT
       CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}"
       echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
