@@ -86,6 +86,9 @@ spack config add "modules:default:enable:[lmod]"
 spack config add "modules:default:lmod:hash_length:0"
 spack config add "modules:default:lmod:core_compilers:['${comp}']"
 spack config add "modules:default:lmod:projections:all:'{name}/{version}'"
+spack config add "modules:prefix_inspections:lib/pkgconfig:[PKG_CONFIG_PATH]"
+spack config add "modules:prefix_inspections:lib64/pkgconfig:[PKG_CONFIG_PATH]"
+spack config add "modules:prefix_inspections:share/pkgconfig:[PKG_CONFIG_PATH]"
 cat ~/.spack/modules.yaml
 echo "::endgroup::"
 
