@@ -128,7 +128,8 @@ echo "::endgroup::"
 
 # List available modules
 echo "::group::List Modules"
-. $(spack location -i lmod)/lmod/lmod/init/bash
 . spack/share/spack/setup-env.sh
+. $(spack location -i lmod)/lmod/lmod/init/bash
+ls $(spack config get modules | awk '/lmod:/ {print $2}' | sed "s|~|$HOME|")/$(spack arch --target)-$(spack arch --operating-system)/Core
 module avail
 echo "::endgroup::"
