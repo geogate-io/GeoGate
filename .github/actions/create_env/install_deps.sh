@@ -130,6 +130,8 @@ echo "::endgroup::"
 echo "::group::List Modules"
 . spack/share/spack/setup-env.sh
 . $(spack location -i lmod)/lmod/lmod/init/bash
-ls $(spack config get modules | awk '/lmod:/ {print $2}' | sed "s|~|$HOME|")/$(spack arch --target)-$(spack arch --operating-system)/Core
+dirs=$(find "$SPACK_ROOT/share/spack/lmod" -type d -name Core | sort -u | paste -sd:)
+export MODULEPATH="${dirs}${MODULEPATH:+:$MODULEPATH}"
+echo "MODULEPATH=$MODULEPATH" >> "$GITHUB_ENV"
 module avail
 echo "::endgroup::"
