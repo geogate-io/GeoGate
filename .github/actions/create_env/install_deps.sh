@@ -128,7 +128,10 @@ echo "::endgroup::"
 
 # List available modules
 echo "::group::List Modules"
-. $(spack location -i lmod)/lmod/lmod/init/bash
 . spack/share/spack/setup-env.sh
+. $(spack location -i lmod)/lmod/lmod/init/bash
+dirs=$(find "$SPACK_ROOT/share/spack/lmod" -type d -name Core | sort -u | paste -sd:)
+export MODULEPATH="${dirs}${MODULEPATH:+:$MODULEPATH}"
+echo "MODULEPATH=$MODULEPATH" >> "$GITHUB_ENV"
 module avail
 echo "::endgroup::"
