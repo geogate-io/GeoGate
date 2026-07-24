@@ -82,11 +82,13 @@ extern "C" {
     pyintp->set_dict_object(py_mod_dict, py_node, node_in_name);
 
     // trigger script
-    bool err = pyintp->run_script_file(py_script, py_mod_dict);
+    bool ok = pyintp->run_script_file(py_script, py_mod_dict);
 
-    // check error
-    if (err) {
-       pyintp->check_error();
+    // a false return means run_script_file already logged the python
+    // traceback via check_error(); escalate to fatal so the coupled run
+    // doesn't silently continue (and report success) after a script error.
+    if (!ok) {
+       CONDUIT_ERROR("GeoGate Python script failed: " << py_script);
     }
   }
 
@@ -103,11 +105,13 @@ extern "C" {
     PyObject *py_mod_dict = pyintp->global_dict();
 
     // trigger script
-    bool err = pyintp->run_script_file(py_script, py_mod_dict);
+    bool ok = pyintp->run_script_file(py_script, py_mod_dict);
 
-    // check error
-    if (err) {
-       pyintp->check_error();
+    // a false return means run_script_file already logged the python
+    // traceback via check_error(); escalate to fatal so the coupled run
+    // doesn't silently continue (and report success) after a script error.
+    if (!ok) {
+       CONDUIT_ERROR("GeoGate Python script failed: " << py_script);
     }
 
     // fetch output node from global dict
@@ -149,11 +153,13 @@ extern "C" {
     pyintp->set_dict_object(py_mod_dict, py_node, node_in_name);
 
     // trigger script
-    bool err = pyintp->run_script_file(py_script, py_mod_dict);
+    bool ok = pyintp->run_script_file(py_script, py_mod_dict);
 
-    // check error
-    if (err) {
-       pyintp->check_error();
+    // a false return means run_script_file already logged the python
+    // traceback via check_error(); escalate to fatal so the coupled run
+    // doesn't silently continue (and report success) after a script error.
+    if (!ok) {
+       CONDUIT_ERROR("GeoGate Python script failed: " << py_script);
     }
 
     // fetch output node from global dict

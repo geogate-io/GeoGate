@@ -14,7 +14,7 @@ inputs:
     description: 'Catalyst version'
     required: false
     type: string
-    default: 'master'
+    default: '2.1.0'
   compiler:
     description: 'Compiler type and version'
     required: false
@@ -24,7 +24,7 @@ inputs:
     description: 'Conduit version'
     required: false
     type: string
-    default: 'develop'
+    default: '0.9.7'
   esmf: 
     description: 'ESMF version, branch or tag like 8.8.0, develop or =8.5.0b23'
     required: false
@@ -39,7 +39,12 @@ inputs:
     description: 'ParaView version'
     required: false
     type: string
-    default: 'master'
+    default: '6.1.1'
+  python:
+    description: 'Python version'
+    required: false
+    type: string
+    default: '3.12.12'
   spack:
     description: 'Spack version'
     required: false
@@ -64,6 +69,8 @@ runs:
         tar \
         unzip \
         file \
+        gettext \
+        autopoint \
         gringo \
         llvm meson \
         build-essential \
@@ -93,11 +100,10 @@ runs:
         mesa-common-dev \
         libglew-dev \
         libglfw3-dev \
-        libglm-dev"
-        #libosmesa6-dev \
-        #libegl1-mesa-dev \
-        #mesa-utils \
-        #mesa-utils-extra"
+        libglm-dev \
+        libssl-dev \
+        pkg-config \
+        libssh2-1-dev"
       echo "PKGS_LIST=$PKGS_LIST" >> $GITHUB_OUTPUT
 
       sudo apt-get -qq update
@@ -109,8 +115,19 @@ runs:
     run: |
       compiler=`echo ${{ inputs.compiler }} | awk -F@ '{print $1}'`
       compiler_ver=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}'`
-      echo "SPACK_PKGS=\"\"lmod\":\"esmf@${{ inputs.esmf }}%${compiler}@${compiler_ver}+external-parallelio\":\"libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python ^conduit@${{ inputs.conduit }}%${compiler}@${compiler_ver}+python~hdf5~parmetis\":\"paraview@${{ inputs.paraview }}%${compiler}@${compiler_ver}+libcatalyst+fortran~ipo+mpi+python+opengl2+cdi ^[virtuals=gl] ${{ inputs.backend }} ^libcatalyst@${{ inputs.catalyst }}%${compiler}@${compiler_ver}+fortran~ipo+python\"\"" >> $GITHUB_OUTPUT
-      echo "CACHE_NAME=spack-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}" >> $GITHUB_OUTPUT
+      paraview_major=`echo ${{ inputs.paraview }} | cut -d. -f1`
+      if [[ "$paraview_major" =~ ^[0-9]+$ ]] && [ "$paraview_major" -ge 6 ]; then
+        pv_render_variant="osmesa_fallback"
+      else
+        pv_render_variant="opengl2"
+      fi
+      SPACK_PKGS="\"\"lmod\":"
+      SPACK_PKGS+="\"esmf@${{ inputs.esmf }}+external-parallelio\":"
+      SPACK_PKGS+="\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":"
+      SPACK_PKGS+="\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+${pv_render_variant}+cdi ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\""
+      echo "SPACK_PKGS=$SPACK_PKGS" >> $GITHUB_OUTPUT
+      CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}-python_${{ inputs.python }}"
+      echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
     shell: bash
 
   - name: Checkout Component Repository
@@ -127,27 +144,50 @@ runs:
         /home/runner/.spack
       key: ${{ steps.set-env.outputs.CACHE_NAME }}
 
+  # GitHub Actions cache service occasionally logs "Cache hit" but then fails to
+  # download the entry ("Cache not found for input keys"), see
+  # https://github.com/actions/cache/issues/1621. Retry once before paying for a
+  # full rebuild, since this is usually a transient service hiccup.
+  - name: Retry Restore Cached Dependencies
+    id: restore-cache-retry
+    if: steps.restore-cache.outputs.cache-hit != 'true'
+    uses: actions/cache/restore@v4
+    with:
+      path: |
+        ${{ github.workspace }}/app/spack
+        /home/runner/.spack
+      key: ${{ steps.set-env.outputs.CACHE_NAME }}
+
   - name: Create Spack Environment and Install Dependencies
     id: spack-env
-    if: steps.restore-cache.outputs.cache-hit != 'true'
+    if: steps.restore-cache.outputs.cache-hit != 'true' && steps.restore-cache-retry.outputs.cache-hit != 'true'
     run: |
-      ${{ github.workspace }}/app/geogate/.github/workflows/scripts/install_deps.sh \
+      ${{ github.workspace }}/app/geogate/.github/actions/create_env/install_deps.sh \
         -b "${{ inputs.backend }}" \
         -c "${{ inputs.compiler }}" \
         -d "${{ steps.set-env.outputs.SPACK_PKGS }}" \
         -i "${{ inputs.install_dir }}" \
-        -s "${{ inputs.spack }}"
+        -p "${{ inputs.paraview }}" \
+        -s "${{ inputs.spack }}" \
+        -y "${{ inputs.python }}"
     shell: bash
 
   - name: Save Dependencies to Cache
     id: save-cache
-    if: steps.restore-cache.outputs.cache-hit != 'true' &&  steps.spack-env.outcome == 'success'
+    if: steps.restore-cache.outputs.cache-hit != 'true' && steps.restore-cache-retry.outputs.cache-hit != 'true' && steps.spack-env.outcome == 'success'
     uses: actions/cache/save@v4
     with:
       path: |
         ${{ github.workspace }}/app/spack
         /home/runner/.spack
       key: ${{ steps.set-env.outputs.CACHE_NAME }}
+
+  - name: Set Module Path
+    if: steps.restore-cache.outputs.cache-hit == 'true' || steps.restore-cache-retry.outputs.cache-hit == 'true'
+    run: |
+      dirs=$(find "${{ inputs.install_dir }}/spack/share/spack/lmod" -type d -name Core | sort -u | paste -sd:)
+      echo "MODULEPATH=${dirs}${MODULEPATH:+:$MODULEPATH}" >> "$GITHUB_ENV"
+    shell: bash
 
   - name: Debug Outout
     run: |
