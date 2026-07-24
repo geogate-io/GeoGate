@@ -8,6 +8,12 @@ import os
 
 import matplotlib
 matplotlib.use("Agg")
+# The Spack-built freetype/matplotlib combo here fails to rasterize the
+# Unicode minus sign (U+2212) matplotlib uses by default for negative tick
+# labels ("FT_Render_Glyph ... raster overflow"); this plot always has
+# negative values (latitude, wind components), so it hits on every call.
+# Use a plain ASCII hyphen instead to avoid the bad glyph.
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 import numpy as np
 from conduit import Node
