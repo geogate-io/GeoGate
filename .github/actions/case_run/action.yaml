@@ -52,7 +52,7 @@ runs:
       python_bin="$(spack location -i python)/bin/python3"
       python_static_lib=`$python_bin ${{ inputs.geogate_dir }}/../.github/actions/case_run/find_python.py | awk -F: '{print $2}' | tr -d ' '`
       echo $python_static_lib
-      python_ver=$(basename "$python_static_lib" .a | sed 's/^libpython//')
+      python_ver=$(basename "$python_static_lib" | sed -E 's/^libpython//; s/\.(a|so)$//')
       echo "::group::Create esmxBuild.yaml"
       echo "application:" > esmxBuild.yaml
       echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
