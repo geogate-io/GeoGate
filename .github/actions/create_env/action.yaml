@@ -176,6 +176,13 @@ runs:
         /home/runner/.spack
       key: ${{ steps.set-env.outputs.CACHE_NAME }}
 
+  - name: Set Module Path
+    if: steps.restore-cache.outputs.cache-hit == 'true' || steps.restore-cache-retry.outputs.cache-hit == 'true'
+    run: |
+      dirs=$(find "${{ inputs.install_dir }}/spack/share/spack/lmod" -type d -name Core | sort -u | paste -sd:)
+      echo "MODULEPATH=${dirs}${MODULEPATH:+:$MODULEPATH}" >> "$GITHUB_ENV"
+    shell: bash
+
   - name: Debug Outout
     run: |
       cd ${{ inputs.install_dir }}/spack
