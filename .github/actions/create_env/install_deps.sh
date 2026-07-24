@@ -62,7 +62,7 @@ echo "::endgroup::"
 # Find compilers and external packages
 echo "::group::Find Compilers and Externals"
 spack compiler find
-spack external find --exclude cmake --exclude python
+spack external find --exclude cmake --exclude python --exclude meson
 if [ "$pv_backend" == "egl" ]; then
    spack config add "packages:egl:externals:[{'spec':'egl@1.5.0','prefix':'/usr'}]"
    spack config add "packages:egl:buildable:false"
