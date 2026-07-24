@@ -35,10 +35,12 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 for name in FIELDS:
     values = np.array(cop1_data["fields/{}/values".format(name)]).reshape((NY_ATM, NX_ATM))
-    if name == "So_t":
-        # DOCN's land sentinel (> 1e20); mask it so it doesn't dominate
-        # the color scale even if it wasn't already NaN on the way in.
-        values = np.where(values > 1.0e20, np.nan, values)
+    # DOCN's land sentinel (~1e20); mask it so it doesn't dominate the color
+    # scale (and blow up matplotlib's tick/offset-text rendering) even if it
+    # wasn't already NaN on the way in. Applied to all fields, and with a
+    # safety margin below the sentinel rather than an exact threshold, in
+    # case the fill convention varies slightly by field.
+    values = np.where(np.abs(values) > 1.0e19, np.nan, values)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     mesh = ax.pcolormesh(lon, lat, values, shading="auto")
