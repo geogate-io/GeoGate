@@ -8,6 +8,7 @@ env:
   coupling: spmd
   esmf: 8.8.0
   paraview: 6.1.1
+  python: 3.12.12
   spack: v1.2.1
   esmx_np: 5
 
@@ -34,6 +35,11 @@ on:
         required: false
         type: string
         default: '6.1.1'
+      python:
+        description: 'Python version'
+        required: false
+        type: string
+        default: '3.12.12'
       spack:
         description: 'Spack version'
         required: false
@@ -69,6 +75,7 @@ jobs:
         esmf: ${{ inputs.esmf || env.esmf }}
         install_dir: ${{ github.workspace }}/app
         paraview: ${{ inputs.paraview || env.paraview }}
+        python: ${{ inputs.python || env.python }}
         spack: ${{ inputs.spack || env.spack }}
 
     - name: Install GeoGate

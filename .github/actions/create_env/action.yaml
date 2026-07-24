@@ -40,6 +40,11 @@ inputs:
     required: false
     type: string
     default: '6.1.1'
+  python:
+    description: 'Python version'
+    required: false
+    type: string
+    default: '3.12.12'
   spack:
     description: 'Spack version'
     required: false
@@ -121,7 +126,7 @@ runs:
       SPACK_PKGS+="\"libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python ^conduit@${{ inputs.conduit }}+python~hdf5~parmetis\":"
       SPACK_PKGS+="\"paraview@${{ inputs.paraview }}+libcatalyst+fortran~ipo+mpi+python+${pv_render_variant}+cdi ^libcatalyst@${{ inputs.catalyst }}+fortran~ipo+python\"\""
       echo "SPACK_PKGS=$SPACK_PKGS" >> $GITHUB_OUTPUT
-      CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}"
+      CACHE_NAME="spack-${{ inputs.spack }}-${{ runner.os }}-${compiler}_${compiler_ver}-esmf_${{ inputs.esmf }}-catalyst_${{ inputs.catalyst }}-conduit_${{ inputs.conduit }}-paraview_${{ inputs.paraview }}_${{ inputs.backend }}-python_${{ inputs.python }}"
       echo "CACHE_NAME=$CACHE_NAME" >> $GITHUB_OUTPUT
     shell: bash
 
@@ -163,7 +168,8 @@ runs:
         -d "${{ steps.set-env.outputs.SPACK_PKGS }}" \
         -i "${{ inputs.install_dir }}" \
         -p "${{ inputs.paraview }}" \
-        -s "${{ inputs.spack }}"
+        -s "${{ inputs.spack }}" \
+        -y "${{ inputs.python }}"
     shell: bash
 
   - name: Save Dependencies to Cache

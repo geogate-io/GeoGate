@@ -4,7 +4,7 @@ set -e
 set -o pipefail
 
 # Command line arguments
-while getopts b:c:d:i:p:s: flag
+while getopts b:c:d:i:p:s:y: flag
 do
   case "${flag}" in
     b) pv_backend=${OPTARG};;
@@ -13,6 +13,7 @@ do
     i) install_dir=${OPTARG};;
     p) pv_ver=${OPTARG};;
     s) spack_ver=${OPTARG};;
+    y) python_ver=${OPTARG};;
   esac
 done
 
@@ -37,6 +38,10 @@ if [[ -z "$spack_ver" || ! -z `echo $spack_ver | grep '^-'` ]]; then
   spack_ver="develop"
 fi
 
+if [[ -z "$python_ver" || ! -z `echo $python_ver | grep '^-'` ]]; then
+  python_ver="3.12.12"
+fi
+
 if [ -z "$pv_ver" ]; then
   echo "ParaView version is not given! Exiting ..."
   exit
@@ -49,6 +54,7 @@ echo "Compiler Version  : $comp"
 echo "Dependencies      : $deps"
 echo "Install Directory : $install_dir"
 echo "Spack Version     : $spack_ver"
+echo "Python Version    : $python_ver"
 
 # Go to installation directory
 cd $install_dir
@@ -105,7 +111,7 @@ spack -e ${env_dir} config add "packages:c:require:['${comp}']"
 spack -e ${env_dir} config add "packages:cxx:require:['${comp}']"
 spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
 spack -e ${env_dir} config add "packages:hwloc:require:['~gl']"
-spack -e ${env_dir} config add "packages:python:require:['python@3.12:']"
+spack -e ${env_dir} config add "packages:python:require:['python@${python_ver}']"
 spack -e ${env_dir} config add "packages:py-pandas:variants:~performance"
 pv_major=$(echo "${pv_ver}" | cut -d. -f1)
 if [[ "$pv_major" =~ ^[0-9]+$ ]] && [ "$pv_major" -ge 6 ]; then
