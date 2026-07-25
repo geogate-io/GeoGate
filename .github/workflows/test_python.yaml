@@ -88,17 +88,6 @@ jobs:
         use_python: ON
         use_catalyst: ON
 
-    # geogate_plot.py needs matplotlib in the same Python environment that
-    # GeoGate's embedded interpreter loads (the Spack-provided Python pulled
-    # in by conduit+python/paraview+python). We resolve that Python's actual
-    # install prefix explicitly rather than relying on `module load`/PATH,
-    # since after `spack env activate` the first `python3` on PATH is
-    # Spack's own internal bootstrap interpreter (python-venv), which ships
-    # without pip on purpose. --user is used since the Spack view is
-    # otherwise read-only to the runner user. mpi4py is built against
-    # whatever `mpicc` is on PATH, which is the apt-installed OpenMPI that
-    # Spack also detected as an external package -- the same MPI esmx_app
-    # itself runs under, so the two stay ABI-compatible.
     - name: Install Python Plugin Dependencies
       run: |
         . ${{ github.workspace }}/app/spack/share/spack/setup-env.sh
@@ -106,7 +95,7 @@ jobs:
         python_bin="$(spack location -i python)/bin/python3"
         echo "Using $python_bin, mpicc: $(which mpicc)"
         $python_bin -m ensurepip --upgrade --user
-        $python_bin -m pip install --user --quiet matplotlib mpi4py
+        $python_bin -m pip install --user --quiet mpi4py
       shell: bash
 
     - name: Install CDEPS

@@ -113,6 +113,7 @@ spack -e ${env_dir} config add "packages:fortran:require:['${comp}']"
 spack -e ${env_dir} config add "packages:hwloc:require:['~gl']"
 spack -e ${env_dir} config add "packages:python:require:['python@${python_ver}']"
 spack -e ${env_dir} config add "packages:py-pandas:variants:~performance"
+spack -e ${env_dir} config add "packages:py-matplotlib:require:['@3.10.5']"
 pv_major=$(echo "${pv_ver}" | cut -d. -f1)
 if [[ "$pv_major" =~ ^[0-9]+$ ]] && [ "$pv_major" -ge 6 ]; then
   # ParaView 6.x bundles VTK built against HDF5 1.10+ (64-bit hid_t); HDF5 1.8.x
