@@ -39,7 +39,7 @@ if [[ -z "$spack_ver" || ! -z `echo $spack_ver | grep '^-'` ]]; then
 fi
 
 if [[ -z "$python_ver" || ! -z `echo $python_ver | grep '^-'` ]]; then
-  python_ver="3.12.12"
+  python_ver="3.12.13"
 fi
 
 if [ -z "$pv_ver" ]; then

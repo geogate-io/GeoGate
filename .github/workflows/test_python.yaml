@@ -8,7 +8,7 @@ env:
   coupling: spmd
   esmf: 8.8.0
   paraview: 6.1.1
-  python: 3.12.12
+  python: 3.12.13
   spack: v1.2.1
   esmx_np: 5
 
@@ -39,7 +39,7 @@ on:
         description: 'Python version'
         required: false
         type: string
-        default: '3.12.12'
+        default: '3.12.13'
       spack:
         description: 'Spack version'
         required: false
