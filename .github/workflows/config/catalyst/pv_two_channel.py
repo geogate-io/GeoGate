@@ -1,8 +1,11 @@
 # script-version: 2.0
 # Catalyst state generated using paraview version 5.13.0
 import paraview
-paraview.compatibility.major = 5
-paraview.compatibility.minor = 13
+# Left unset so the script always runs natively against whatever ParaView
+# version is installed, instead of needing a bump on every version upgrade.
+# Uncomment and set to pin back to a specific compatibility version.
+# paraview.compatibility.major = 5
+# paraview.compatibility.minor = 13
 
 #### import the simple module from the paraview
 from paraview.simple import *

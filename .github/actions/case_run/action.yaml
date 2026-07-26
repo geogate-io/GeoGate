@@ -49,12 +49,14 @@ runs:
       export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
       export CXX=/usr/bin/g++-$COMPILER_MAJOR_VER
       export esmf_ROOT=`cat $ESMFMKFILE | grep ESMF_LIBSDIR | awk -F= '{print $2}'`
-      python_static_lib=`python ${{ inputs.geogate_dir }}/../.github/workflows/scripts/find_python.py | awk -F: '{print $2}' | tr -d ' '`
+      python_bin="$(spack location -i python)/bin/python3"
+      python_static_lib=`$python_bin ${{ inputs.geogate_dir }}/../.github/actions/case_run/find_python.py | awk -F: '{print $2}' | tr -d ' '`
       echo $python_static_lib
+      python_ver=$(basename "$python_static_lib" | sed -E 's/^libpython//; s/\.(a|so)$//')
       echo "::group::Create esmxBuild.yaml"
       echo "application:" > esmxBuild.yaml
       echo "  disable_comps: ESMX_Data" >> esmxBuild.yaml
-      echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python3.11" >> esmxBuild.yaml
+      echo "  link_libraries: stdc++ piof conduit catalyst catalyst_fortran python${python_ver}" >> esmxBuild.yaml
       echo "  link_paths: $python_static_lib /usr/lib/gcc/x86_64-linux-gnu/$COMPILER_MAJOR_VER" >> esmxBuild.yaml
       echo "components:" >> esmxBuild.yaml
       echo "  datm:" >> esmxBuild.yaml
