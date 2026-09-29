@@ -21,7 +21,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_FIELDSTATUS_GRIDSET, ESMF_FIELDSTATUS_EMPTY
   use ESMF, only: ESMF_FIELDSTATUS_COMPLETE, ESMF_StateItem_Flag
   use ESMF, only: ESMF_STATEITEM_STATE, ESMF_STATEITEM_FIELD
-  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_METHOD_RUN
+  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_METHOD_RUN, ESMF_GEOMTYPE_LOCSTREAM
   use ESMF, only: ESMF_GeomType_Flag, ESMF_FieldStatus_Flag
   use ESMF, only: ESMF_Time, ESMF_TimeGet, ESMF_TimeInterval
   use ESMF, only: ESMF_Clock, ESMF_ClockGet, ESMF_ClockSet
@@ -58,6 +58,7 @@ module geogate_nuopc
   use NUOPC_Model, only: label_Advance
   use NUOPC_Model, only: label_CheckImport
   use NUOPC_Model, only: label_SetRunClock
+  use NUOPC_Model, only: model_label_Finalize => label_Finalize
 
   use geogate_share, only: ChkErr
   use geogate_share, only: FB_init_pointer
@@ -68,7 +69,9 @@ module geogate_nuopc
   use geogate_internalstate, only: InternalState
   use geogate_internalstate, only: InternalStateInit 
 
+  !use geogate_phases_io, only: geogate_phases_io_init
   use geogate_phases_io, only: geogate_phases_io_run
+  !use geogate_phases_io, only: geogate_phases_io_final
   use geogate_phases_python, only: geogate_phases_python_run
   use geogate_phases_catalyst, only: geogate_phases_catalyst_run
 
@@ -87,6 +90,7 @@ module geogate_nuopc
   !-----------------------------------------------------------------------------
 
   private :: DataInitialize
+  private :: Finalize
   private :: SetRunClock
 
   !-----------------------------------------------------------------------------
@@ -148,6 +152,10 @@ contains
 
     ! It is used for data initialization
     call NUOPC_CompSpecialize(gcomp, specLabel=model_label_DataInitialize, specRoutine=DataInitialize, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! It is used to finalize each plugin
+    call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Finalize, specRoutine=Finalize, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! It is used to run user specified phase to process the data
@@ -610,7 +618,11 @@ contains
           ! Loop over fields and realize them
           do m = 1, itemCount
              if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
-                ! Replace grid with mesh
+                ! Check geom type of the field (assuming that all fields share the same geom type)
+                call ESMF_FieldGet(is_local%wrap%NStateImp(n), itemName=itemNameList(m), geomtype=is_local%wrap%fieldGeomType(n), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Replace grid with mesh, if it is required.
                 call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -623,6 +635,16 @@ contains
           ! Clean memory
           if (allocated(itemNameList)) deallocate(itemNameList)
           if (allocated(itemTypeList)) deallocate(itemTypeList)
+       end if
+
+       ! Create field bundle FBImp
+       if (ESMF_StateIsCreated(is_local%wrap%NStateImp(n), rc=rc)) then
+          ! Print debug info
+          call ESMF_LogWrite(trim(subname)//': initializing FBs for '//trim(is_local%wrap%compName(n)), ESMF_LOGMSG_INFO)
+
+          ! Create FBImp(:) with pointers directly into NStateImp(:)
+          call FB_init_pointer(is_local%wrap%NStateImp(n), is_local%wrap%FBImp(n), name='FBImp'//trim(is_local%wrap%compName(n)), rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end if
     end do
 
@@ -744,17 +766,9 @@ contains
 
     ! First call block
     if (first_call) then
-       ! Create field bundle FBImp
-       do n = 1, is_local%wrap%numComp
-          if (ESMF_StateIsCreated(is_local%wrap%NStateImp(n), rc=rc)) then
-             ! Print debug info
-             call ESMF_LogWrite(trim(subname)//': initializing FBs for '//trim(is_local%wrap%compName(n)), ESMF_LOGMSG_INFO)
-
-             ! Create FBImp(:) with pointers directly into NStateImp(:)
-             call FB_init_pointer(is_local%wrap%NStateImp(n), is_local%wrap%FBImp(n), name='FBImp'//trim(is_local%wrap%compName(n)), rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          end if
-       end do
+       ! Initialize plugins
+       !call geogate_phases_io_init(gcomp, rc)
+       !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Set first call flag
        first_call = .false.
@@ -803,6 +817,26 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine DataInitialize
+
+  !-----------------------------------------------------------------------------
+
+  subroutine Finalize(gcomp, rc)
+
+    ! input/output variables
+    type(ESMF_GridComp) :: gcomp
+    integer, intent(out) :: rc
+    character(len=*), parameter :: subname = trim(modName)//':(Finalize) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    !call geogate_phases_io_final(gcomp, rc)
+    !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine Finalize
 
   !-----------------------------------------------------------------------------
 
@@ -891,7 +925,7 @@ contains
              return
           end if ! fieldStatus
 
-       else
+       else if (geomtype == ESMF_GEOMTYPE_MESH) then
           ! Check for field status
           if (fieldStatus == ESMF_FIELDSTATUS_GRIDSET) then
              ! Check attribute in the field
@@ -934,6 +968,9 @@ contains
              deallocate(ungriddedLBound)
              deallocate(ungriddedUBound)
           end if ! fieldStatus
+
+       else if (geomtype == ESMF_GEOMTYPE_LOCSTREAM) then
+          call ESMF_LogWrite(trim(subname)//": geomtype is ESMF_GEOMTYPE_LOCSTREAM for "//trim(itemNameList(n)), ESMF_LOGMSG_INFO)
 
        end if ! geomType
     end do ! itemCount
