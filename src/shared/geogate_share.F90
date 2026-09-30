@@ -12,7 +12,7 @@ module geogate_share
   use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleCreate, ESMF_FieldBundleAdd
   use ESMF, only: ESMF_AttributeGet, ESMF_Mesh, ESMF_MeshLoc
   use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_INDEX_DELOCAL, ESMF_MAXSTR, ESMF_KIND_R8
-  use ESMF, only: ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH, ESMF_TYPEKIND_R8
+  use ESMF, only: ESMF_GEOMTYPE_LOCSTREAM, ESMF_GEOMTYPE_MESH, ESMF_TYPEKIND_R8
   use ESMF, only: ESMF_StateGet, ESMF_StateItem_Flag, ESMF_STATEITEM_STATE
   use ESMF, only: ESMF_MeshLoc, ESMF_RouteHandle, ESMF_RouteHandleIsCreated
   use ESMF, only: ESMF_FieldBundleIsCreated, ESMF_FieldBundleGet
@@ -141,6 +141,7 @@ module geogate_share
     type(ESMF_Field) :: oldField, newField
     type(ESMF_MeshLoc) :: meshloc
     type(ESMF_Mesh) :: lmesh
+    type(ESMF_GeomType_Flag) :: fieldGeomType
     real(ESMF_KIND_R8), pointer :: dataptr1d(:)
     real(ESMF_KIND_R8), pointer :: dataptr2d(:,:)
     character(ESMF_MAXSTR), allocatable :: lfieldNameList(:)
@@ -173,62 +174,83 @@ module geogate_share
           call ESMF_StateGet(StateIn, itemName=lfieldNameList(n), field=oldField, rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-          ! Query mesh location
-          if (n == 1) then
-             call ESMF_FieldGet(oldField, mesh=lmesh, meshloc=meshloc, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-          end if
-
-          ! Check rank of the field
-          call ESMF_FieldGet(oldField, rank=lrank, rc=rc)
+          ! Query geomType
+          call ESMF_FieldGet(oldField, geomType=fieldGeomType, rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-          ! Add ungridded dimension to field if rank > 1
-          if (lrank == 2) then
-             ! Determine ungridded lower and upper bounds for field
-             call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
-                  purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
+          ! Check geomType, can be only mesh (grid is converted to mesh) or locstream
+          if (fieldGeomType == ESMF_GEOMTYPE_MESH) then
+             ! Query mesh location
+             if (n == 1) then
+                call ESMF_FieldGet(oldField, mesh=lmesh, meshloc=meshloc, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+             end if
+
+             ! Check rank of the field
+             call ESMF_FieldGet(oldField, rank=lrank, rc=rc)
              if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-             if (ungriddedCount /= 1) then
-                call ESMF_LogWrite(trim(subname)//": ERROR ungriddedCount for "// &
-                     trim(lfieldnamelist(n))//" must be 1 if rank is 2 ", ESMF_LOGMSG_ERROR)
+             ! Add ungridded dimension to field if rank > 1
+             if (lrank == 2) then
+                ! Determine ungridded lower and upper bounds for field
+                call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
+                     purpose="Instance", itemCount=ungriddedCount,  isPresent=isPresent, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+                if (ungriddedCount /= 1) then
+                   call ESMF_LogWrite(trim(subname)//": ERROR ungriddedCount for "// &
+                        trim(lfieldnamelist(n))//" must be 1 if rank is 2 ", ESMF_LOGMSG_ERROR)
+                   rc = ESMF_FAILURE
+                   return
+                end if
+
+                ! Set ungridded dimensions for field
+                call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
+                     purpose="Instance", valueList=ungriddedLBound, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+                call ESMF_AttributeGet(oldField, name="UngriddedUBound", convention="NUOPC", &
+                     purpose="Instance", valueList=ungriddedUBound, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+                ! Get 2d pointer for field
+                call ESMF_FieldGet(oldField, farrayptr=dataptr2d, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+                ! Create new field with an ungridded dimension
+                newField = ESMF_FieldCreate(lmesh, dataptr2d, ESMF_INDEX_DELOCAL, &
+                     meshloc=meshloc, name=lfieldNameList(n), &
+                     ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, gridToFieldMap=(/2/), rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             else if (lrank == 1) then
+                ! Get 1d pointer for field
+                call ESMF_FieldGet(oldField, farrayptr=dataptr1d, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+                ! Create new field without an ungridded dimension
+                newField = ESMF_FieldCreate(lmesh, dataptr1d, ESMF_INDEX_DELOCAL, &
+                     meshloc=meshloc, name=lfieldNameList(n), rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+             else
+                call ESMF_LogWrite(trim(subname)//": Rank can be 1 or 2!", ESMF_LOGMSG_ERROR)
                 rc = ESMF_FAILURE
                 return
              end if
 
-             ! Set ungridded dimensions for field
-             call ESMF_AttributeGet(oldField, name="UngriddedLBound", convention="NUOPC", &
-                  purpose="Instance", valueList=ungriddedLBound, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-             call ESMF_AttributeGet(oldField, name="UngriddedUBound", convention="NUOPC", &
-                  purpose="Instance", valueList=ungriddedUBound, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
+          else if (fieldGeomType == ESMF_GEOMTYPE_LOCSTREAM) then
+              ! Get 1d pointer for field
+              call ESMF_FieldGet(oldField, farrayptr=dataptr1d, rc=rc)
+              if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-             ! Get 2d pointer for field
-             call ESMF_FieldGet(oldField, farrayptr=dataptr2d, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-
-             ! Create new field with an ungridded dimension
-             newField = ESMF_FieldCreate(lmesh, dataptr2d, ESMF_INDEX_DELOCAL, &
-                  meshloc=meshloc, name=lfieldNameList(n), &
-                  ungriddedLbound=ungriddedLbound, ungriddedUbound=ungriddedUbound, gridToFieldMap=(/2/), rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-
-          else if (lrank == 1) then
-             ! Get 1d pointer for field
-             call ESMF_FieldGet(oldField, farrayptr=dataptr1d, rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
-
-             ! Create new field without an ungridded dimension
-             newField = ESMF_FieldCreate(lmesh, dataptr1d, ESMF_INDEX_DELOCAL, &
-                  meshloc=meshloc, name=lfieldNameList(n), rc=rc)
-             if (chkerr(rc,__LINE__,u_FILE_u)) return
+              ! Create new field without an ungridded dimension
+              newField = ESMF_FieldCreate(oldField, name=lfieldNameList(n), rc=rc)
+              if (chkerr(rc,__LINE__,u_FILE_u)) return
 
           else
-             call ESMF_LogWrite(trim(subname)//": Rank can be 1 or 2!", ESMF_LOGMSG_ERROR)
-             rc = ESMF_FAILURE
-             return
+              call ESMF_LogWrite(trim(subname)//": GeomType can be only mesh or locstream!", ESMF_LOGMSG_ERROR)
+              rc = ESMF_FAILURE
+              return
           end if
 
           ! Add field to FB
