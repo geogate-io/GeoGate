@@ -2,18 +2,13 @@ module geogate_hydro_config
 
   !-----------------------------------------------------------------------------
   ! Reads the hydro plugin YAML configuration file using ESMF_HConfig.
-  !
-  ! NOTE: ESMF_HConfigAsString/AsLogical/GetSize/IsDefined/CreateAt are all
-  ! FUNCTIONS (their result is the return value, not a "value=" argument),
-  ! and their dummy argument names (hconfig, keyString, index, rc, ...) were
-  ! cross-checked against the compiled esmf_hconfigmod.mod for ESMF 8.9.1
-  ! (intel-oneapi-compilers/2025.2.1) on Derecho. If you build against a
-  ! different ESMF release/compiler, re-check with e.g.:
-  !   strings <path-to>/esmf_hconfigmod.mod | grep '^ESMF_HCONFIGASSTRING%'
+  ! See docs/source/hydro.rst for the config file format and notes on the
+  ! ESMF_HConfig API used here.
   !-----------------------------------------------------------------------------
 
   use ESMF, only: ESMF_HConfig, ESMF_HConfigCreate, ESMF_HConfigDestroy
   use ESMF, only: ESMF_HConfigCreateAt, ESMF_HConfigAsString, ESMF_HConfigGetSize
+  use ESMF, only: ESMF_HConfigIsDefined
   use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_LOGMSG_ERROR
   use ESMF, only: ESMF_SUCCESS, ESMF_FAILURE, ESMF_MAXSTR
 
@@ -31,7 +26,14 @@ module geogate_hydro_config
   private :: ReadStringSeq
 
   type, public :: HydroConfigType
-     character(len=ESMF_MAXSTR) :: routeLinkFile = ""
+     character(len=ESMF_MAXSTR) :: coordFile = ""
+     character(len=ESMF_MAXSTR) :: idVarName = ""
+     character(len=ESMF_MAXSTR) :: latVarName = ""
+     character(len=ESMF_MAXSTR) :: lonVarName = ""
+     character(len=ESMF_MAXSTR) :: orderVarName = ""   ! optional; blank => use on-disk order as-is
+     character(ESMF_MAXSTR), allocatable :: dataFiles(:)
+     character(len=ESMF_MAXSTR) :: timeVarName = ""
+     character(len=ESMF_MAXSTR) :: timeSelection = "nearest"   ! "nearest" | "lower" | "upper" | "linear" (not yet implemented)
      character(ESMF_MAXSTR), allocatable :: variableNames(:)
   end type HydroConfigType
 
@@ -54,6 +56,8 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
+    logical :: isDefined
+    character(ESMF_MAXSTR) :: cvalue
     type(ESMF_HConfig) :: hconfig
     type(ESMF_HConfig) :: hconfigHydro
     character(len=*), parameter :: subname = trim(modName)//':(HydroConfigRead) '
@@ -62,26 +66,49 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(configFile), ESMF_LOGMSG_INFO)
 
-    ! Load the YAML document and descend into the top-level "hydro:" map.
-    ! NOTE: ESMF_HConfigAsString/AsLogical/GetSize/IsDefined are all FUNCTIONS
-    ! (not subroutines) that take the value/size/flag as their return value,
-    ! not as a "value=" dummy argument -- confirmed against the installed
-    ! esmf_hconfigmod.mod for this build (no VALUE argument exists for any of
-    ! them).
+    ! Load the YAML document and descend into the top-level "hydro:" map
     hconfig = ESMF_HConfigCreate(filename=trim(configFile), rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     hconfigHydro = ESMF_HConfigCreateAt(hconfig, keyString="hydro", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Required scalar entry
-    config%routeLinkFile = trim(ESMF_HConfigAsString(hconfigHydro, keyString="route_link_file", rc=rc))
+    ! Required scalar entries
+    config%coordFile = trim(ESMF_HConfigAsString(hconfigHydro, keyString="coord_file", rc=rc))
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! List of field names to create on the hydro LocStream, e.g.:
-    !   variables:
-    !     - streamflow
-    !     - velocity
+    config%idVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="id_variable", rc=rc))
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    config%latVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="lat_variable", rc=rc))
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    config%lonVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="lon_variable", rc=rc))
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Optional (see docs/source/hydro.rst: Runtime Configuration Options)
+    isDefined = ESMF_HConfigIsDefined(hconfigHydro, keyString="order_variable", rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isDefined) then
+       config%orderVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="order_variable", rc=rc))
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    call ReadStringSeq(hconfigHydro, "data_files", config%dataFiles, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Name of the time coordinate variable in each data file
+    config%timeVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="time_variable", rc=rc))
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Optional (see docs/source/hydro.rst: Runtime Configuration Options)
+    isDefined = ESMF_HConfigIsDefined(hconfigHydro, keyString="time_selection", rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isDefined) then
+       config%timeSelection = trim(ESMF_HConfigAsString(hconfigHydro, keyString="time_selection", rc=rc))
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
     call ReadStringSeq(hconfigHydro, "variables", config%variableNames, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -99,11 +126,8 @@ contains
 
   subroutine ReadStringSeq(hconfigParent, keyString, valueList, rc)
 
-    ! Reads a YAML sequence of scalar strings under hconfigParent(keyString:)
-    ! by descending into that sequence node and reading it element-by-element
-    ! with index= (rather than ESMF_HConfigAsStringSeq, whose "stringLen"
-    ! argument's optionality was not confirmed against this build -- this
-    ! avoids that ambiguity entirely).
+    ! Reads a YAML sequence of scalar strings under hconfigParent(keyString:),
+    ! element-by-element (see docs/source/hydro.rst for why not AsStringSeq)
 
     ! input/output variables
     type(ESMF_HConfig), intent(in) :: hconfigParent

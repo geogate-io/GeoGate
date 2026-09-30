@@ -3,6 +3,7 @@ if(GEOGATE_USE_HYDRO)
   set(SRCFILES geogate_hydro_config.F90
                geogate_hydro_io.F90
                geogate_hydro_pio.F90
+               geogate_hydro_time.F90
                geogate_phases_hydro.F90)
 else()
   set(SRCFILES geogate_phases_hydro_void.F90)
