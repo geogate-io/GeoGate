@@ -59,7 +59,6 @@ module geogate_nuopc
   use NUOPC_Model, only: label_Advance
   use NUOPC_Model, only: label_CheckImport
   use NUOPC_Model, only: label_SetRunClock
-  use NUOPC_Model, only: model_label_Finalize => label_Finalize
 
   use geogate_share, only: ChkErr
   use geogate_share, only: FB_init_pointer
@@ -70,9 +69,7 @@ module geogate_nuopc
   use geogate_internalstate, only: InternalState
   use geogate_internalstate, only: InternalStateInit 
 
-  !use geogate_phases_io, only: geogate_phases_io_init
   use geogate_phases_io, only: geogate_phases_io_run
-  !use geogate_phases_io, only: geogate_phases_io_final
   use geogate_phases_python, only: geogate_phases_python_run
   use geogate_phases_catalyst, only: geogate_phases_catalyst_run
 
@@ -880,9 +877,6 @@ contains
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
-
-    !call geogate_phases_io_final(gcomp, rc)
-    !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
