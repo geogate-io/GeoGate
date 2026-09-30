@@ -239,6 +239,10 @@ module geogate_share
              end if
 
           else if (fieldGeomType == ESMF_GEOMTYPE_LOCSTREAM) then
+              ! Get 1d pointer for field
+              call ESMF_FieldGet(oldField, farrayptr=dataptr1d, rc=rc)
+              if (chkerr(rc,__LINE__,u_FILE_u)) return
+
               ! Create new field without an ungridded dimension
               newField = ESMF_FieldCreate(oldField, name=lfieldNameList(n), rc=rc)
               if (chkerr(rc,__LINE__,u_FILE_u)) return

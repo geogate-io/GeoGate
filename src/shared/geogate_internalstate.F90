@@ -11,6 +11,7 @@ module geogate_internalstate
   use ESMF, only: ESMF_UtilStringLowerCase, ESMF_LogWrite
   use ESMF, only: ESMF_Mesh, ESMF_SUCCESS, ESMF_LOGMSG_INFO
   use ESMF, only: ESMF_STATEITEM_STATE, ESMF_MAXSTR
+  use ESMF, only: ESMF_LocStream
 
   use NUOPC, only: NUOPC_GetAttribute
   use NUOPC_Model, only: NUOPC_ModelGet
@@ -34,6 +35,7 @@ module geogate_internalstate
      type(ESMF_State) :: NStateExp
      type(ESMF_FieldBundle) :: FBExp
      type(ESMF_Mesh) :: meshExp
+     type(ESMF_LocStream) :: locStreamExp
      type(ESMF_RouteHandle), pointer :: RHImp2Exp(:)
   end type InternalStateStruct
 

@@ -660,8 +660,9 @@ contains
     ! local variables
     integer :: n
     logical :: isPresent, isSet
-    type(ESMF_Field) :: meshField
     type(InternalState) :: is_local
+    type(ESMF_Field) :: field
+    character(len=ESMF_MAXSTR) :: exportType
     character(len=ESMF_MAXSTR) :: mesh_file
     character(len=ESMF_MAXSTR) :: cvalue
     character(len=*), parameter :: subname = trim(modName)//':(RealizeProvided) '
@@ -675,21 +676,34 @@ contains
        call ESMF_LogWrite(trim(subname)//": ExportFields is not provided by the configuration", &
          ESMF_LOGMSG_WARNING)
        return
-    end if 
+    end if
 
-    ! Return if ESMF mesh file for export fields is not given
-    mesh_file = ""
-    call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
-      isPresent=isPresent, isSet=isSet, rc=rc)
+    ! Check export type. The valid options are "none", "mesh", and "locstream"
+    exportType = "none"
+    call NUOPC_CompAttributeGet(gcomp, name="ExportType", value=cvalue, &
+       isPresent=isPresent, isSet=isSet, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     if (isPresent .and. isSet) then
-       mesh_file = trim(cvalue)
-       call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
-    else
-       call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields. "// &
-          "Skip adding fields to export state!", ESMF_LOGMSG_WARNING)
-       return
-    endif
+       exportType = trim(cvalue)
+       call ESMF_LogWrite(trim(subname)//": ExportType = "//trim(exportType), ESMF_LOGMSG_INFO)
+    end if
+
+    ! Return if ESMF mesh file for export fields is not given
+    if (trim(exportType) == "mesh") then
+       mesh_file = ""
+       call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
+          isPresent=isPresent, isSet=isSet, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (isPresent .and. isSet) then
+          mesh_file = trim(cvalue)
+          call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
+       else
+          call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields if exportType is 'mesh'."// &
+             "Skip adding fields to export state!", ESMF_LOGMSG_ERROR)
+          rc = ESMF_FAILURE
+          return
+       end if
+    end if
 
     ! Get the internal state
     nullify(is_local%wrap)
@@ -698,30 +712,61 @@ contains
 
     ! Check if export fields are requested
     if (size(exportFieldNameList) > 0) then
-       ! Create mesh from mesh file
-       is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
        ! Query for exportState
        call NUOPC_ModelGet(gcomp, exportState=is_local%wrap%NStateExp, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Create fields
-       ! Assuming that all fields share the same grid/mesh
-       do n = 1, size(exportFieldNameList)
-          ! Create field on mesh
-          meshField = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
-            meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
+       if (trim(exportType) == "mesh") then
+          ! Create mesh from mesh file
+          is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Initialize field
-          call ESMF_FieldFill(meshField, dataFillScheme="const", const1=fillValue, rc=rc)
+          ! Create fields
+          ! Assuming that all fields share the same grid/mesh
+          do n = 1, size(exportFieldNameList)
+             ! Create field on mesh
+             field = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
+               meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Initialize field
+             call ESMF_FieldFill(field, dataFillScheme="const", const1=fillValue, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Realize field
+             call NUOPC_Realize(is_local%wrap%NStateExp, field=field, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+
+       else if (trim(exportType) == "locstream") then
+          ! Create locstream for export fields
+          is_local%wrap%locStreamExp = ESMF_LocStreamCreate(trim(mesh_file), &
+            fileformat=ESMF_FILEFORMAT_ESMFMESH, centerflag=.false., rc=rc) 
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Realize field
-          call NUOPC_Realize(is_local%wrap%NStateExp, field=meshField, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       end do
+          ! Create fields
+          ! Assuming that all fields share the same grid/mesh
+          do n = 1, size(exportFieldNameList)
+             ! Create field on mesh
+             field = ESMF_FieldCreate(is_local%wrap%locStreamExp, typekind=ESMF_TYPEKIND_R8, &
+               name=trim(exportFieldNameList(n)), rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Initialize field
+             call ESMF_FieldFill(field, dataFillScheme="const", const1=fillValue, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Realize field
+             call NUOPC_Realize(is_local%wrap%NStateExp, field=field, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+
+       else
+          call ESMF_LogWrite(trim(subname)//": ExportType = "//trim(exportType)// &
+             " is not supported. Skip adding fields to export state!", ESMF_LOGMSG_ERROR)
+          rc = ESMF_FAILURE
+          return
+       end if
 
        ! Add field to FB for easy access
        call FB_init_pointer(is_local%wrap%NStateExp, is_local%wrap%FBExp, name='FBExp', rc=rc)
@@ -1219,7 +1264,7 @@ contains
 
           else
              call ESMF_LogWrite(trim(subname)//": ERROR geomtype not supported ", ESMF_LOGMSG_ERROR)
-             rc=ESMF_FAILURE
+             rc = ESMF_FAILURE
              return
           end if ! geomtype
 

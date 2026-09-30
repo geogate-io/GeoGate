@@ -26,7 +26,9 @@ module geogate_phases_io
   ! Public module routines
   !-----------------------------------------------------------------------------
 
+  public :: geogate_phases_io_init
   public :: geogate_phases_io_run
+  public :: geogate_phases_io_final
 
   !-----------------------------------------------------------------------------
   ! Private module routines
@@ -43,6 +45,24 @@ module geogate_phases_io
 !===============================================================================
 contains
 !===============================================================================
+
+  subroutine geogate_phases_io_init(gcomp, rc)
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_io_init) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_io_init
+
+  !-----------------------------------------------------------------------------
 
   subroutine geogate_phases_io_run(gcomp, rc)
 
@@ -88,6 +108,24 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_io_run
+
+  !-----------------------------------------------------------------------------
+
+  subroutine geogate_phases_io_final(gcomp, rc)
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_io_final) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_io_final
 
   !-----------------------------------------------------------------------------
 
