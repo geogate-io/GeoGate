@@ -32,6 +32,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
   use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT
   use ESMF, only: ESMF_FieldFill, ESMF_FILEFORMAT_ESMFMESH
+  use ESMF, only: ESMF_LocStream, ESMF_LocStreamGet, ESMF_LocStreamCreate
 
   use NUOPC, only: NUOPC_CompDerive
   use NUOPC, only: NUOPC_CompSpecialize
@@ -989,8 +990,8 @@ contains
     integer :: dimCount, tileCount, connectionCount
     type(ESMF_Grid) :: grid, newgrid
     type(ESMF_Mesh) :: mesh, newmesh
-    type(ESMF_DistGrid) :: distgrid
-    type(ESMF_DistGrid) :: elemdistgrid, newelemdistgrid
+    type(ESMF_LocStream) :: locstream, newlocstream
+    type(ESMF_DistGrid) :: distgrid, newdistgrid
     type(ESMF_Field) :: field
     type(ESMF_GeomType_Flag) :: geomtype
     type(ESMF_FieldStatus_Flag) :: fieldStatus
@@ -1146,15 +1147,15 @@ contains
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Query mesh to get decomposition information
-             call ESMF_MeshGet(mesh, elementDistGrid=elemDistGrid, rc=rc)
+             call ESMF_MeshGet(mesh, elementDistGrid=distgrid, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Create new decomposition based on existing one
-             newelemDistGrid = ESMF_DistGridCreate(elemDistGrid, balanceflag=.true., rc=rc)
+             newdistgrid = ESMF_DistGridCreate(distgrid, balanceflag=.true., rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Create new mesh with new decomposition
-             newmesh = ESMF_MeshEmptyCreate(elementDistGrid=newelemDistGrid, rc=rc)
+             newmesh = ESMF_MeshEmptyCreate(elementDistGrid=newdistgrid, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Swap all meshes in the state
@@ -1175,8 +1176,47 @@ contains
                 else
                    call ESMF_LogWrite(trim(subname)//": NOT replacing mesh for field: "//trim(itemNameList(m)), ESMF_LOGMSG_WARNING)
                 end if ! field status
-
              end do ! fields
+          
+          else if (geomtype == ESMF_GEOMTYPE_LOCSTREAM) then
+             call ESMF_LogWrite(trim(subname)//": geomtype is ESMF_GEOMTYPE_LOCSTREAM for "//trim(itemNameList(n)), ESMF_LOGMSG_INFO)
+
+             ! Query field to get locstream
+             call ESMF_FieldGet(field, locstream=locstream, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Query locstream to get decomposition information
+             call ESMF_LocStreamGet(locstream, distgrid=distgrid, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return             
+             
+             ! Create new decomposition based on existing one
+             newdistgrid = ESMF_DistGridCreate(distgrid, balanceflag=.true., rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Create new locstream with new decomposition
+             newlocstream = ESMF_LocStreamCreate(locstream, newdistgrid, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Swap all locstreams in the state
+             do m = 1, itemCount
+                ! Query state to get field
+                call ESMF_StateGet(state, field=field, itemName=itemNameList(m), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Query field to get its status
+                call ESMF_FieldGet(field, status=fieldStatus, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                if (fieldStatus == ESMF_FIELDSTATUS_EMPTY .or. fieldStatus == ESMF_FIELDSTATUS_GRIDSET) then
+                   call ESMF_FieldEmptySet(field, locstream=newlocstream, rc=rc)
+                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                   call ESMF_LogWrite(trim(subname)//": attach locstream for "//trim(itemNameList(m)), ESMF_LOGMSG_INFO)
+                else
+                   call ESMF_LogWrite(trim(subname)//": NOT replacing locstream for field: "//trim(itemNameList(m)), ESMF_LOGMSG_WARNING)
+                end if ! field status
+             end do ! fields
+
           else
              call ESMF_LogWrite(trim(subname)//": ERROR geomtype not supported ", ESMF_LOGMSG_ERROR)
              rc=ESMF_FAILURE
