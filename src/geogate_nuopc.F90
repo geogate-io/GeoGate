@@ -808,9 +808,17 @@ contains
 
     ! First call block
     if (first_call) then
-       ! Initialize plugins
-       !call geogate_phases_io_init(gcomp, rc)
-       !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       ! Create field bundle FBImp
+       do n = 1, is_local%wrap%numComp
+          if (ESMF_StateIsCreated(is_local%wrap%NStateImp(n), rc=rc)) then
+             ! Print debug info
+             call ESMF_LogWrite(trim(subname)//': initializing FBs for '//trim(is_local%wrap%compName(n)), ESMF_LOGMSG_INFO)
+
+             ! Create FBImp(:) with pointers directly into NStateImp(:)
+             call FB_init_pointer(is_local%wrap%NStateImp(n), is_local%wrap%FBImp(n), name='FBImp'//trim(is_local%wrap%compName(n)), rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
+       end do
 
        ! Set first call flag
        first_call = .false.
