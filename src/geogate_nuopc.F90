@@ -709,7 +709,7 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! Check if export fields are requested
-    if (size(exportFieldNameList) > 0 and trim(exportType) /= "none") then
+    if (size(exportFieldNameList) > 0 .and. trim(exportType) /= "none") then
        ! Query for exportState
        call NUOPC_ModelGet(gcomp, exportState=is_local%wrap%NStateExp, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
