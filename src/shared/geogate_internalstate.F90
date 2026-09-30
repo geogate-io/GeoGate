@@ -35,7 +35,6 @@ module geogate_internalstate
      type(ESMF_FieldBundle) :: FBExp
      type(ESMF_Mesh) :: meshExp
      type(ESMF_RouteHandle), pointer :: RHImp2Exp(:)
-     type(ESMF_GeomType_Flag) :: fieldGeomType(:)
   end type InternalStateStruct
 
   !-----------------------------------------------------------------------------
@@ -131,7 +130,6 @@ module geogate_internalstate
        allocate(is_local%wrap%NStateImp(nestedStateCount))
        allocate(is_local%wrap%FBImpIntp(nestedStateCount))
        allocate(is_local%wrap%RHImp2Exp(nestedStateCount))
-       allocate(is_local%wrap%fieldGeomType(nestedStateCount))
     else
        is_local%wrap%numComp = 0
        call ESMF_LogWrite(trim(subname)//': There is no nested states or connection to the component!', ESMF_LOGMSG_INFO)

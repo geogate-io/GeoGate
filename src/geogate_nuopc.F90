@@ -618,10 +618,6 @@ contains
           ! Loop over fields and realize them
           do m = 1, itemCount
              if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
-                ! Check geom type of the field (assuming that all fields share the same geom type)
-                call ESMF_FieldGet(is_local%wrap%NStateImp(n), itemName=itemNameList(m), geomtype=is_local%wrap%fieldGeomType(n), rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
                 ! Replace grid with mesh, if it is required.
                 call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
