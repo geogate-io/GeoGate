@@ -687,7 +687,7 @@ contains
     end if
 
     ! Return if ESMF mesh file for export fields is not given
-    if (trim(exportType) == "mesh") then
+    if (trim(exportType) /= "none") then
        mesh_file = ""
        call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
           isPresent=isPresent, isSet=isSet, rc=rc)
@@ -696,7 +696,7 @@ contains
           mesh_file = trim(cvalue)
           call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
        else
-          call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields if exportType is 'mesh'."// &
+          call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields if exportType is 'mesh' or 'locstream'."// &
              "Skip adding fields to export state!", ESMF_LOGMSG_ERROR)
           rc = ESMF_FAILURE
           return
@@ -709,7 +709,7 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! Check if export fields are requested
-    if (size(exportFieldNameList) > 0) then
+    if (size(exportFieldNameList) > 0 and trim(exportType) /= "none") then
        ! Query for exportState
        call NUOPC_ModelGet(gcomp, exportState=is_local%wrap%NStateExp, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -759,11 +759,6 @@ contains
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
           end do
 
-       else
-          call ESMF_LogWrite(trim(subname)//": ExportType = "//trim(exportType)// &
-             " is not supported. Skip adding fields to export state!", ESMF_LOGMSG_ERROR)
-          rc = ESMF_FAILURE
-          return
        end if
 
        ! Add field to FB for easy access
