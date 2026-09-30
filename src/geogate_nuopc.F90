@@ -51,6 +51,7 @@ module geogate_nuopc
   use NUOPC_Model, only: model_routine_Run => routine_Run
   use NUOPC_Model, only: model_label_DataInitialize => label_DataInitialize
   use NUOPC_Model, only: model_label_Advance => label_Advance
+  use NUOPC_Model, only: model_label_Finalize => label_Finalize
   use NUOPC_Model, only: label_Advertise
   use NUOPC_Model, only: label_ModifyAdvertised
   use NUOPC_Model, only: label_AcceptTransfer
