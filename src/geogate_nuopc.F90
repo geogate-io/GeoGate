@@ -30,7 +30,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_DistGridGet, ESMF_DistGridConnection
   use ESMF, only: ESMF_FieldCreate, ESMF_StateIsCreated
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
-  use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT
+  use ESMF, only: ESMF_TYPEKIND_R8, ESMF_KIND_R8, ESMF_MESHLOC_ELEMENT
   use ESMF, only: ESMF_FieldFill, ESMF_FILEFORMAT_ESMFMESH
   use ESMF, only: ESMF_LocStream, ESMF_LocStreamGet, ESMF_LocStreamCreate
 
@@ -66,6 +66,7 @@ module geogate_nuopc
   use geogate_share, only: StringSplit
   use geogate_share, only: debugMode
   use geogate_share, only: fillValue
+  use geogate_share, only: AttributeGetList
   
   use geogate_internalstate, only: InternalState
   use geogate_internalstate, only: InternalStateInit 
@@ -260,20 +261,13 @@ contains
     ! Add fields to export state
     !------------------
 
-    ! Check number of export fields
-    itemCount = 0
-    call NUOPC_CompAttributeGet(gcomp, name="ExportFields", itemCount=itemCount, &
-      isPresent=isPresent, isSet=isSet, rc=rc)
+    ! Query export field list from the component attribute
+    exportFieldNameList = AttributeGetList(gcomp, name="ExportFields", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Check if there are any fields to advertise
+    itemCount = size(exportFieldNameList, dim=1)
     if (itemCount > 0) then
-       ! Allocate array for field list
-       allocate(exportFieldNameList(itemCount))
-
-       ! Query for list of export fields
-       call NUOPC_CompAttributeGet(gcomp, name="ExportFields", valueList=exportFieldNameList, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
        ! Add fields to export state
        do n = 1, itemCount
           call NUOPC_Advertise(exportState, standardName=trim(exportFieldNameList(n)), &
@@ -667,6 +661,7 @@ contains
     logical :: isPresent, isSet
     type(InternalState) :: is_local
     type(ESMF_Field) :: field
+    real(ESMF_KIND_R8), pointer :: farrayPtr(:)
     character(len=ESMF_MAXSTR) :: exportType
     character(len=ESMF_MAXSTR) :: mesh_file
     character(len=ESMF_MAXSTR) :: cvalue
@@ -746,7 +741,7 @@ contains
        else if (trim(exportType) == "locstream") then
           ! Create locstream for export fields
           is_local%wrap%locStreamExp = ESMF_LocStreamCreate(trim(mesh_file), &
-            fileformat=ESMF_FILEFORMAT_ESMFMESH, centerflag=.false., rc=rc) 
+            fileformat=ESMF_FILEFORMAT_ESMFMESH, centerflag=.false., rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
           ! Create fields
@@ -757,9 +752,12 @@ contains
                name=trim(exportFieldNameList(n)), rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             ! Initialize field
-             call ESMF_FieldFill(field, dataFillScheme="const", const1=fillValue, rc=rc)
+             ! Initialize field, ESMF_FieldFill does not support locStream
+             call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             farrayPtr(:) = fillValue
+             nullify(farrayPtr)
 
              ! Realize field
              call NUOPC_Realize(is_local%wrap%NStateExp, field=field, rc=rc)

@@ -20,8 +20,10 @@ module geogate_share
   use ESMF, only: ESMF_REGRIDMETHOD_BILINEAR, ESMF_POLEMETHOD_ALLAVG, ESMF_UNMAPPEDACTION_IGNORE
   use ESMF, only: ESMF_REGION_SELECT, ESMF_TERMORDER_SRCSEQ
   use ESMF, only: ESMF_TraceRegionEnter, ESMF_TraceRegionExit
+  use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_WARNING, ESMF_GridComp, ESMF_GridCompGet
+  use ESMF, only: ESMF_LocStream
 
-  use NUOPC, only: NUOPC_GetAttribute
+  use NUOPC, only: NUOPC_GetAttribute, NUOPC_CompAttributeGet
 
   implicit none
   private
@@ -30,10 +32,11 @@ module geogate_share
   ! Public module routines
   !-----------------------------------------------------------------------------
 
+  public :: AttributeGetList
   public :: ChkErr
-  public :: StringSplit
   public :: FB_copy
   public :: FB_init_pointer
+  public :: StringSplit
 
   !-----------------------------------------------------------------------------
   ! Public module data
@@ -57,6 +60,74 @@ module geogate_share
 !===============================================================================  
   contains
 !===============================================================================
+
+  function AttributeGetList(gcomp, name, rc) result(valueList)
+    implicit none
+
+    ! input/output variables
+    type(ESMF_GridComp), intent(in) :: gcomp
+    character(len=*), intent(in) :: name
+    integer, intent(out) :: rc
+
+    character(len=:), allocatable :: valueList(:)
+
+    ! local variables
+    logical :: hconfigIsPresent
+    logical :: isPresent, isSet
+    integer :: itemCount, n
+    character(ESMF_MAXSTR) :: message
+    character(ESMF_MAXSTR) :: cvalue
+    character(*), parameter :: subName = '(AttributeGetList)'
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    call NUOPC_CompAttributeGet(gcomp, name=trim(name), value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Check if attribute is present and set
+    if (isPresent .and. isSet) then
+       ! Check config file format attribute
+       call ESMF_GridCompGet(gcomp, hconfigIsPresent=hconfigIsPresent, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! The HConfig attribute is a list of values, so we need to query for the number of items and then get the list
+       if (hconfigIsPresent) then
+          ! Check number of export fields
+          itemCount = 0
+          call NUOPC_CompAttributeGet(gcomp, name=trim(name), itemCount=itemCount, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Allocate array for field list
+          allocate(character(len=ESMF_MAXSTR) :: valueList(itemCount))
+
+          ! Query for list of export fields
+          call NUOPC_CompAttributeGet(gcomp, name=trim(name), valueList=valueList, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+        ! The Config attribute is a single string with values separated by colons, so we need to split the string into a list of values
+        else
+          ! Split string
+          valueList = StringSplit(trim(cvalue), ":")
+       end if
+
+       ! List the attribute values
+       do n = 1, size(valueList, dim=1)
+          write(message, fmt='(A,I2.2,A)') trim(subname)//': '//trim(name)//' = '//trim(valueList(n))
+          call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+       end do
+    else
+        allocate(character(len=ESMF_MAXSTR) :: valueList(0))
+        write(message, fmt='(A,A)') trim(subname)//': Attribute '//trim(name)//' is not present or not set'
+        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_WARNING)
+    end if
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end function AttributeGetList
+
+  !-----------------------------------------------------------------------------
 
   logical function ChkErr(rc, line, file)
 
@@ -141,6 +212,7 @@ module geogate_share
     type(ESMF_Field) :: oldField, newField
     type(ESMF_MeshLoc) :: meshloc
     type(ESMF_Mesh) :: lmesh
+    type(ESMF_LocStream) :: llocstream
     type(ESMF_GeomType_Flag) :: fieldGeomType
     real(ESMF_KIND_R8), pointer :: dataptr1d(:)
     real(ESMF_KIND_R8), pointer :: dataptr2d(:,:)
@@ -239,12 +311,19 @@ module geogate_share
              end if
 
           else if (fieldGeomType == ESMF_GEOMTYPE_LOCSTREAM) then
+             ! Query locstream
+             if (n == 1) then
+                call ESMF_FieldGet(oldField, locstream=llocstream, rc=rc)
+                if (chkerr(rc,__LINE__,u_FILE_u)) return
+             end if
+
               ! Get 1d pointer for field
               call ESMF_FieldGet(oldField, farrayptr=dataptr1d, rc=rc)
               if (chkerr(rc,__LINE__,u_FILE_u)) return
 
               ! Create new field without an ungridded dimension
-              newField = ESMF_FieldCreate(oldField, name=lfieldNameList(n), rc=rc)
+              newField = ESMF_FieldCreate(llocstream, dataptr1d, ESMF_INDEX_DELOCAL, &
+                   name=lfieldNameList(n), rc=rc)
               if (chkerr(rc,__LINE__,u_FILE_u)) return
 
           else
