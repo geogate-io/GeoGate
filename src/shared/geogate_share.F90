@@ -83,17 +83,17 @@ module geogate_share
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
-    call NUOPC_CompAttributeGet(gcomp, name=trim(name), value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
+    ! Check config file format
+    call ESMF_GridCompGet(gcomp, hconfigIsPresent=hconfigIsPresent, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Check if attribute is present and set
-    if (isPresent .and. isSet) then
-       ! Check config file format attribute
-       call ESMF_GridCompGet(gcomp, hconfigIsPresent=hconfigIsPresent, rc=rc)
+    if (hconfigIsPresent) then
+       ! The HConfig attribute is a list of values, so we need to query for
+       ! the number of items and then get the list -- never as a scalar
+       call NUOPC_CompAttributeGet(gcomp, name=trim(name), isPresent=isPresent, isSet=isSet, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! The HConfig attribute is a list of values, so we need to query for the number of items and then get the list
-       if (hconfigIsPresent) then
+       if (isPresent .and. isSet) then
           ! Check number of export fields
           itemCount = 0
           call NUOPC_CompAttributeGet(gcomp, name=trim(name), itemCount=itemCount, rc=rc)
@@ -105,13 +105,20 @@ module geogate_share
           ! Query for list of export fields
           call NUOPC_CompAttributeGet(gcomp, name=trim(name), valueList=valueList, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end if
+    else
+       ! The Config attribute is a single string with values separated by
+       ! colons, so we need to split the string into a list of values
+       call NUOPC_CompAttributeGet(gcomp, name=trim(name), value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-        ! The Config attribute is a single string with values separated by colons, so we need to split the string into a list of values
-        else
-          ! Split string
+       if (isPresent .and. isSet) then
           valueList = StringSplit(trim(cvalue), ":")
        end if
+    end if
 
+    ! Check if attribute is present and set
+    if (isPresent .and. isSet) then
        ! List the attribute values
        do n = 1, size(valueList, dim=1)
           write(message, fmt='(A,I2.2,A)') trim(subname)//': '//trim(name)//' = '//trim(valueList(n))
