@@ -370,7 +370,9 @@ contains
        else
           ! Allocate temporary array for field list
           if (trim(scalar_field_name) /= "") then
-             if allocated(fieldNamesToRemove) deallocate(fieldNamesToRemove)
+             ! AttributeGetList call returns an zero sized empty array if the attribute is not found.
+             if (allocated(fieldNamesToRemove)) deallocate(fieldNamesToRemove)
+             ! Allocate a single element array for the scalar field name
              allocate(fieldNamesToRemove(1))
              fieldNamesToRemove(1) = trim(scalar_field_name)
           end if
