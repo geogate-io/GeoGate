@@ -33,6 +33,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_TYPEKIND_R8, ESMF_KIND_R8, ESMF_MESHLOC_ELEMENT
   use ESMF, only: ESMF_FieldFill, ESMF_FILEFORMAT_ESMFMESH
   use ESMF, only: ESMF_LocStream, ESMF_LocStreamGet, ESMF_LocStreamCreate
+  use ESMF, only: ESMF_COORDSYS_SPH_DEG
 
   use NUOPC, only: NUOPC_CompDerive
   use NUOPC, only: NUOPC_CompSpecialize
@@ -1235,14 +1236,14 @@ contains
 
              ! Query locstream to get decomposition information
              call ESMF_LocStreamGet(locstream, distgrid=distgrid, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return             
-             
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
              ! Create new decomposition based on existing one
              newdistgrid = ESMF_DistGridCreate(distgrid, balanceflag=.true., rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Create new locstream with new decomposition
-             newlocstream = ESMF_LocStreamCreate(locstream, newdistgrid, rc=rc)
+             newlocstream = ESMF_LocStreamCreate(distgrid=newdistgrid, coordSys=ESMF_COORDSYS_SPH_DEG, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Swap all locstreams in the state
