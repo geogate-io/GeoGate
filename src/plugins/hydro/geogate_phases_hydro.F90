@@ -77,7 +77,15 @@ module geogate_phases_hydro
   real(ESMF_KIND_R8), allocatable, save :: varScaleFactor(:), varAddOffset(:)
   logical, allocatable, save :: varHasFillValue(:)
   real(ESMF_KIND_R8), allocatable, save :: varFillValueRaw(:)
-  integer, save :: selectedTimeIndex = -1
+  integer, save :: selectedLowerIndex = -1
+  integer, save :: selectedUpperIndex = -1
+
+  ! Cached RAW (pre-unpack) bracket data for time_selection=linear, so
+  ! BlendAndFillFields can reblend every call (the weight changes
+  ! continuously even while still inside the same bracket) without
+  ! re-reading from disk; also used, with lowerIndex==upperIndex, by
+  ! nearest/lower/upper (see geogate_phases_hydro_run)
+  real(ESMF_KIND_R8), allocatable, save :: rawLower(:,:), rawUpper(:,:)
 
   character(ESMF_MAXSTR), save :: hydroConfigFile = "hydro_config.yaml"
   character(*), parameter :: modName = "(geogate_phases_hydro)"
@@ -100,7 +108,7 @@ contains
     character(ESMF_MAXSTR) :: message
     type(ESMF_VM) :: vm
     integer :: petCount
-    integer :: nearestTimeIndex
+    integer :: lowerIndex, upperIndex
     type(ESMF_Clock) :: clock
     type(ESMF_Time) :: currTime
     character(ESMF_MAXSTR) :: currTimeStr
@@ -125,13 +133,8 @@ contains
        call HydroConfigRead(hydroConfigFile, config, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       if (trim(config%timeSelection) == "linear") then
-          call ESMF_LogWrite(trim(subname)//": ERROR time_selection 'linear' is not yet implemented; "// &
-             "use 'nearest', 'lower', or 'upper'", ESMF_LOGMSG_ERROR)
-          rc = ESMF_FAILURE
-          return
-       else if (trim(config%timeSelection) /= "nearest" .and. trim(config%timeSelection) /= "lower" &
-          .and. trim(config%timeSelection) /= "upper") then
+       if (trim(config%timeSelection) /= "nearest" .and. trim(config%timeSelection) /= "lower" &
+          .and. trim(config%timeSelection) /= "upper" .and. trim(config%timeSelection) /= "linear") then
           call ESMF_LogWrite(trim(subname)//": ERROR time_selection '"//trim(config%timeSelection)// &
              "' is not recognized; must be 'nearest', 'lower', 'upper', or 'linear'", ESMF_LOGMSG_ERROR)
           rc = ESMF_FAILURE
@@ -176,21 +179,41 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_LogWrite(subname//' currTime='//trim(currTimeStr), ESMF_LOGMSG_INFO)
 
+    ! lowerIndex==upperIndex for nearest/lower/upper (and for linear, on the
+    ! coincidental call where currTime exactly matches a record's own valid
+    ! time -- e.g. whenever the coupling interval matches the data's own
+    ! time spacing, every call lands exactly on a record, so linear
+    ! degenerates to this same trivial case every time, by construction,
+    ! not as a special case that needs handling separately)
     select case (trim(config%timeSelection))
     case ("lower")
-       call FindLowerTime(currTime, nearestTimeIndex, rc)
+       call FindLowerTime(currTime, lowerIndex, rc)
+       upperIndex = lowerIndex
     case ("upper")
-       call FindUpperTime(currTime, nearestTimeIndex, rc)
+       call FindUpperTime(currTime, upperIndex, rc)
+       lowerIndex = upperIndex
+    case ("linear")
+       call FindLowerTime(currTime, lowerIndex, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call FindUpperTime(currTime, upperIndex, rc)
     case default
-       call FindNearestTime(currTime, nearestTimeIndex, rc)
+       call FindNearestTime(currTime, lowerIndex, rc)
+       upperIndex = lowerIndex
     end select
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    if (nearestTimeIndex /= selectedTimeIndex) then
-       call ReadAndFillFields(nearestTimeIndex, currTime, rc)
+    ! Only re-read from disk when the bracket itself changes (expensive
+    ! PIO reads); re-blend every call regardless (cheap, in-memory), since
+    ! for "linear" the weight keeps changing even inside the same bracket
+    if (lowerIndex /= selectedLowerIndex .or. upperIndex /= selectedUpperIndex) then
+       call ReadBracketData(lowerIndex, upperIndex, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       selectedTimeIndex = nearestTimeIndex
+       selectedLowerIndex = lowerIndex
+       selectedUpperIndex = upperIndex
     end if
+
+    call BlendAndFillFields(lowerIndex, upperIndex, currTime, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
@@ -268,7 +291,7 @@ contains
     ! matched field's own memory -- no separate buffer or copy. A variable
     ! with no matching export field (wrong name, not on a LocStream) is
     ! skipped, not an error: varData(n)%p gets a small fallback buffer
-    ! instead, so ReadAndFillFields still has somewhere to write it (see
+    ! instead, so BlendAndFillFields still has somewhere to write it (see
     ! docs/source/hydro.rst).
 
     ! input/output variables
@@ -361,7 +384,7 @@ contains
     end if
 
     ! Fallback buffer for any variable with no matching export field, so
-    ! ReadAndFillFields still has a place to write it
+    ! BlendAndFillFields still has a place to write it
     do n = 1, size(config%variableNames)
        if (.not. hasExportField(n)) allocate(varData(n)%p(localCount))
     end do
@@ -580,58 +603,139 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine ReadAndFillFields(timeIndex, currTime, rc)
+  subroutine ReadBracketData(lowerIndex, upperIndex, rc)
 
-    ! Reads every configured variable from the selected data file/record,
-    ! unpacks it, and writes it into the matching field (see
+    ! Reads every configured variable's RAW (pre-unpack) data for the
+    ! lower/upper time-index bracket into the cached rawLower/rawUpper
+    ! arrays, only ever called when the bracket itself changes (see
+    ! geogate_phases_hydro_run) -- BlendAndFillFields re-blends this cached
+    ! data every call without touching disk again (see
     ! docs/source/hydro.rst: Data Ingest).
 
     ! input/output variables
-    integer, intent(in) :: timeIndex
+    integer, intent(in) :: lowerIndex, upperIndex
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: n, nVars
+    character(ESMF_MAXSTR) :: message
+    character(ESMF_MAXSTR) :: lowerFile, upperFile
+    real(ESMF_KIND_R8), allocatable :: raw(:)
+    character(len=*), parameter :: subname = trim(modName)//':(ReadBracketData) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    nVars = size(config%variableNames)
+    if (.not. allocated(rawLower)) then
+       allocate(rawLower(localCount, nVars))
+       allocate(rawUpper(localCount, nVars))
+    end if
+
+    lowerFile = config%dataFiles(timeFileIndex(lowerIndex))
+    do n = 1, nVars
+       call PioReadVariable(lowerFile, mpiComm, myPet, nptsGlobal, seqIndexList, &
+          trim(config%variableNames(n)), varXtype(n), varNdims(n), timeFrameIndex(lowerIndex), raw, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       rawLower(:,n) = raw(:)
+       deallocate(raw)
+    end do
+
+    write(message, fmt='(A,I4,A,I8,A,I8,A)') trim(subname)//': PET ', myPet, &
+       ' read lower-bracket data from '//trim(lowerFile)//' record ', timeFrameIndex(lowerIndex), &
+       ' (time index ', lowerIndex, ')'
+    call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+
+    if (upperIndex == lowerIndex) then
+       rawUpper = rawLower
+    else
+       upperFile = config%dataFiles(timeFileIndex(upperIndex))
+       do n = 1, nVars
+          call PioReadVariable(upperFile, mpiComm, myPet, nptsGlobal, seqIndexList, &
+             trim(config%variableNames(n)), varXtype(n), varNdims(n), timeFrameIndex(upperIndex), raw, rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          rawUpper(:,n) = raw(:)
+          deallocate(raw)
+       end do
+
+       write(message, fmt='(A,I4,A,I8,A,I8,A)') trim(subname)//': PET ', myPet, &
+          ' read upper-bracket data from '//trim(upperFile)//' record ', timeFrameIndex(upperIndex), &
+          ' (time index ', upperIndex, ')'
+       call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+    end if
+
+  end subroutine ReadBracketData
+
+  !-----------------------------------------------------------------------------
+
+  subroutine BlendAndFillFields(lowerIndex, upperIndex, currTime, rc)
+
+    ! Blends the cached rawLower/rawUpper bracket data (see ReadBracketData)
+    ! by the fractional position of currTime between the bracket's two
+    ! valid times, and writes the result into the matching field. Called
+    ! every run-phase invocation, even when the bracket itself hasn't
+    ! changed, since for time_selection=linear the blend weight keeps
+    ! changing continuously within the same bracket (see
+    ! docs/source/hydro.rst: Data Ingest).
+    !
+    ! A point is left at the fill sentinel if EITHER bracket endpoint is
+    ! itself a fill value at that point -- not only when both are -- since
+    ! blending a real value against the fill sentinel would otherwise
+    ! produce a physically meaningless result.
+
+    ! input/output variables
+    integer, intent(in) :: lowerIndex, upperIndex
     type(ESMF_Time), intent(in) :: currTime
     integer, intent(out) :: rc
 
     ! local variables
     integer :: n, m
+    real(ESMF_KIND_R8) :: weight, numer, denom
+    type(ESMF_TimeInterval) :: diffNumer, diffDenom
     character(ESMF_MAXSTR) :: message
-    character(ESMF_MAXSTR) :: dataFile
     character(ESMF_MAXSTR) :: validTimeStr
     character(ESMF_MAXSTR) :: currTimeStr
-    real(ESMF_KIND_R8), allocatable :: raw(:)
-    character(len=*), parameter :: subname = trim(modName)//':(ReadAndFillFields) '
+    character(len=*), parameter :: subname = trim(modName)//':(BlendAndFillFields) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
 
-    dataFile = config%dataFiles(timeFileIndex(timeIndex))
+    if (lowerIndex == upperIndex) then
+       weight = 0.0d0
+    else
+       diffNumer = currTime - timeValid(lowerIndex)
+       diffDenom = timeValid(upperIndex) - timeValid(lowerIndex)
+       call ESMF_TimeIntervalGet(diffNumer, s_r8=numer, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_TimeIntervalGet(diffDenom, s_r8=denom, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       weight = numer/denom
+    end if
 
     do n = 1, size(config%variableNames)
-       call PioReadVariable(dataFile, mpiComm, myPet, nptsGlobal, seqIndexList, &
-          trim(config%variableNames(n)), varXtype(n), varNdims(n), timeFrameIndex(timeIndex), raw, rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
        ! varData(n)%p either IS an export field's own memory (hasExportField(n)
        ! .true.) or a small fallback buffer (see ResolveExportFields) -- either
        ! way, writing here is the only fill/copy step needed
-       varData(n)%p(:) = raw(:)*varScaleFactor(n) + varAddOffset(n)
+       varData(n)%p(:) = (rawLower(:,n) + weight*(rawUpper(:,n) - rawLower(:,n)))*varScaleFactor(n) + varAddOffset(n)
        if (varHasFillValue(n)) then
           do m = 1, localCount
-             if (raw(m) == varFillValueRaw(n)) varData(n)%p(m) = fillValue
+             if (rawLower(m,n) == varFillValueRaw(n) .or. rawUpper(m,n) == varFillValueRaw(n)) then
+                varData(n)%p(m) = fillValue
+             end if
           end do
        end if
-       deallocate(raw)
     end do
 
-    call ESMF_TimeGet(timeValid(timeIndex), timeStringISOFrac=validTimeStr, rc=rc)
+    call ESMF_TimeGet(timeValid(lowerIndex), timeStringISOFrac=validTimeStr, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_TimeGet(currTime, timeStringISOFrac=currTimeStr, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    write(message, fmt='(A,I4,A,I8,A,I8,A)') trim(subname)//': PET ', myPet, &
-       ' filled fields from '//trim(dataFile)//' record ', timeFrameIndex(timeIndex), &
-       ' (time index ', timeIndex, '), valid_time='//trim(validTimeStr)//', curr_time='//trim(currTimeStr)
+    write(message, fmt='(A,I4,A,F8.5,A)') trim(subname)//': PET ', myPet, &
+       ' blended fields, weight=', weight, ', lower_valid_time='//trim(validTimeStr)// &
+       ', curr_time='//trim(currTimeStr)
     call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
 
-  end subroutine ReadAndFillFields
+  end subroutine BlendAndFillFields
 
 end module geogate_phases_hydro

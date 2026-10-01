@@ -7,7 +7,7 @@ Hydro
 The Hydro plugin ingests point coordinates from a configured NetCDF file and builds a parallel-decomposed ``ESMF_LocStream`` from it, with one ``ESMF_Field`` per configured name on that LocStream. The coordinate file's id/lat/lon (and optional point-reordering) variable names all come from the plugin's YAML config, so the plugin itself is data-source agnostic; the examples below use the National Water Model (NWM) ``RouteLink`` file as one concrete data source, but any similarly-shaped NetCDF file (a 1-D id variable plus 1-D lat/lon variables sharing the same dimension) can be configured instead.
 
 .. note::
-  The plugin ingests real, time-varying data (see "Data Ingest" below), but there is no destination-Mesh regrid or NUOPC export-state realization yet — the LocStream and its fields are built and filled, but not yet connected to another component. Of the four ``time_selection`` modes, only ``linear`` is not yet implemented (see "Runtime Configuration Options" below).
+  The plugin ingests real, time-varying data (see "Data Ingest" below) and can export it to another component by matching each configured variable against a field already present in the export state (``ExportType``/``ExportMeshFile``/``ExportFields``, read generically by ``geogate_nuopc.F90`` — see the :doc:`GeoGate Overview <overview>`). All four ``time_selection`` modes (``nearest``/``lower``/``upper``/``linear``) are implemented.
 
 ========================================
 Plugin Specific Third-party Dependencies
@@ -33,7 +33,7 @@ When built as part of a larger CMake project (e.g. as a subdirectory of ufs-weat
 Runtime Configuration Options
 =============================
 
-The plugin reads a small YAML configuration file (default path ``hydro_config.yaml``, overridable via the NUOPC component attribute ``HydroConfigFile``) via ``ESMF_HConfig``. Example, using the NWM RouteLink file as the data source:
+The plugin reads a small YAML configuration file (default path ``hydro_config.yaml``, overridable via the NUOPC component attribute ``HydroConfigFile``) via ``ESMF_HConfig``. Example, using the NWM RouteLink file as the data source and exporting two of its variables under different NUOPC standard names:
 
 .. code-block:: yaml
 
@@ -47,10 +47,10 @@ The plugin reads a small YAML configuration file (default path ``hydro_config.ya
       - "nwm.t00z.medium_range.channel_rt_1.f001.conus.nc"
       - "nwm.t00z.medium_range.channel_rt_1.f002.conus.nc"
     time_variable: "time"
-    time_selection: nearest  # optional, default "nearest"; or "lower", "upper", "linear" (not yet implemented)
+    time_selection: linear   # optional, default "nearest"; or "lower", "upper", "linear"
     variables:
-      - streamflow
-      - velocity
+      - streamflow:Fall_roff
+      - velocity:Fall_soff
 
 - **coord_file**: path to the NetCDF file supplying point coordinates.
 - **id_variable**: name of the 1-D variable giving each point's unique integer id.
@@ -63,8 +63,20 @@ The plugin reads a small YAML configuration file (default path ``hydro_config.ya
   - ``nearest``: the record closest in time to the model's current time. Switches at the midpoint between two records' valid times; an exact tie is broken in favor of the later record in ``data_files`` (round-half-up), so the switch lands exactly on the midpoint rather than one coupling step after it.
   - ``lower``: the most recent record at-or-before the current time. Holds it until the model clock actually reaches the next record's own valid time — never switches early, never extrapolates (errors if the current time precedes every configured record).
   - ``upper``: the nearest upcoming record at-or-after the current time — the mirror image of ``lower`` (errors if the current time is after every configured record).
-  - ``linear``: interpolate between the ``lower`` and ``upper`` records. Accepted by the config schema but not yet implemented — the plugin errors out at startup if selected.
-- **variables**: list of field names to create on the hydro LocStream and read from ``data_files``.
+  - ``linear``: interpolates between the record at-or-before the current time (the ``lower`` bracket) and the one at-or-after it (the ``upper`` bracket), weighted by the current time's fractional position between the two records' own valid times. A point is left at GeoGate's fill sentinel if **either** bracket endpoint is itself a fill value at that point, not only when both are — blending a real value against the fill sentinel would otherwise produce a physically meaningless result. Whenever the current time exactly matches a record's own valid time (including, trivially, every call when the coupling interval matches the data's own time spacing), the ``lower`` and ``upper`` brackets resolve to that same record and the weight is exactly zero, so ``linear`` degenerates to the same result as ``nearest``/``lower``/``upper`` with no special-casing needed. Like ``lower``/``upper``, it does not extrapolate past either end of the configured records.
+- **variables**: list of variable names to create on the hydro LocStream and read from ``data_files``. Each entry may optionally map a data-file variable name to a different export-state field name as ``dataVarName:exportName`` (a coupled system's own field-dictionary naming convention does not always match the data file's variable names, e.g. NUOPC's ``Fall_roff``/``Fall_soff`` standard names above vs. NWM's own ``streamflow``/``velocity``). A bare name with no colon exports under that same name. See "Export Side" below for how each name is actually matched against the export state.
+
+=====================
+Export Side
+=====================
+
+Setting the generic ``ExportType``/``ExportMeshFile``/``ExportFields`` NUOPC component attributes (see the :doc:`GeoGate Overview <overview>`) causes ``geogate_nuopc.F90`` to build a shared geometry (``mesh`` or ``locstream``) from ``ExportMeshFile`` and create one field per ``ExportFields`` entry on it, filled with GeoGate's fill sentinel as a placeholder. The Hydro plugin does not create these fields itself — instead, once per run (``ResolveExportFields``, called once at startup), it looks up each configured variable's ``exportName`` (the ``dataVarName:exportName`` mapping above) against the fields actually present in the export state:
+
+- A variable whose ``exportName`` isn't present in the export state, or whose matched field isn't on a LocStream, is skipped with a warning — it's still read from ``data_files`` and available for ``FBExp``-style internal access, just not exported.
+- A variable whose ``exportName`` **is** found gets ``varData(n)%p`` pointed directly at that field's own memory (``ESMF_FieldGet(..., farrayptr=...)``) — every later read/blend step (see "Data Ingest" below) writes straight into the export field, with no separate copy.
+- If a matched field's local size doesn't match the Hydro plugin's own decomposition (e.g. ``ExportMeshFile`` has a different point count or order than ``coord_file``), this is a hard configuration error (``rc=ESMF_FAILURE``), not a silent skip — writing a differently-sized buffer into the wrong-sized field's memory would otherwise silently corrupt it.
+
+This requires ``ExportMeshFile`` to describe the *same* points, in the *same* order, as ``coord_file`` — e.g. for the NWM RouteLink case, a LocStream mesh file built with the same ``ascendingIndex`` order as ``order_variable`` above (see ``hydro/tools/mesh_nwm.py``, which builds exactly this kind of file).
 
 =====================================
 Parallel Decomposition Implementation
@@ -91,9 +103,10 @@ Unlike the coordinate file, ``data_files`` entries are assumed to already be in 
 
 Each call to ``geogate_phases_hydro_run``:
 
-1. Reads the model clock's current time (``NUOPC_ModelGet`` + ``ESMF_ClockGet``).
-2. Scans the flat list of every ``data_files`` entry's valid time(s) (built once at init, via ``geogate_hydro_time``: ``HydroReadFileTimes``, one entry per time record — so a file with multiple time records contributes multiple entries) and picks a single one per the configured ``time_selection`` (``FindNearestTime``/``FindLowerTime``/``FindUpperTime`` in ``geogate_phases_hydro.F90``; see "Runtime Configuration Options" above for what each does).
-3. Only if that selection changed since the last call, re-reads every configured variable (``geogate_hydro_pio``: ``PioReadVariable``) from the selected file/record and refills the fields — this avoids redundant re-reads when the coupling interval is finer than the data's own time spacing.
+1. Reads the model clock's current time (``NUOPC_ModelGet`` + ``ESMF_ClockGet``). This is **not** necessarily the same as the selected record's own valid time below — reconciling that difference via the configured ``time_selection`` mode is exactly the behavior ``FindNearestTime``/``FindLowerTime``/``FindUpperTime``/the ``linear`` blend implement.
+2. Scans the flat list of every ``data_files`` entry's valid time(s) (built once at init, via ``geogate_hydro_time``: ``HydroReadFileTimes``, one entry per time record — so a file with multiple time records contributes multiple entries) and picks a lower/upper bracket per the configured ``time_selection`` (``FindNearestTime``/``FindLowerTime``/``FindUpperTime`` in ``geogate_phases_hydro.F90``; see "Runtime Configuration Options" above for what each does). For ``nearest``/``lower``/``upper`` the bracket's two ends are always the same record; for ``linear`` they generally differ.
+3. Only if that bracket changed since the last call, re-reads every configured variable's raw (pre-unpack) data for both bracket ends (``ReadBracketData``, via ``geogate_hydro_pio``: ``PioReadVariable``) — this avoids redundant re-reads when the coupling interval is finer than the data's own time spacing, and (for ``linear``) avoids re-reading the upper end a second time once it becomes the new lower end.
+4. Every call, regardless of whether the bracket changed, re-blends the cached bracket data and refills the fields (``BlendAndFillFields``) — this is cheap (in-memory only) and necessary because ``linear``'s blend weight keeps changing continuously even while the bracket itself stays the same.
 
 **Multiple time records per file.** A data variable's on-disk rank determines whether a time record needs to be explicitly selected: if it has only the point dimension (``ndims == 1``, e.g. today's NWM ``channel_rt`` files, where ``streamflow(feature_id)`` carries no time dimension at all — each file holds exactly one implicit record), the read proceeds as a plain decomposed read, same as coordinates. If it has more than one dimension (``ndims > 1``, e.g. a hypothetical ``streamflow(time, feature_id)``), ``PIO_setframe`` selects the correct time record before the decomposed read. This is why the read is skipped for ``ndims == 1``: calling ``PIO_setframe`` on a variable with no record dimension at all is not something the reviewed PIO source documents cleanly one way or the other, so it's avoided instead of assumed safe.
 
@@ -107,46 +120,10 @@ Build Gotchas
 
 **ESMF_HConfig is function-based.** ``ESMF_HConfigAsString``/``AsLogical``/``GetSize``/``IsDefined``/``CreateAt`` are all *functions* — their result is the return value, not a ``value=`` dummy argument (there is no such argument on any of them). This was confirmed directly against the compiled ``esmf_hconfigmod.mod`` for the ESMF releases in use here (8.8.0 and 8.9.1); if building against a different ESMF release, re-check with e.g. ``strings <path-to>/esmf_hconfigmod.mod | grep '^ESMF_HCONFIGASSTRING%'``. ``ESMF_HConfigAsStringSeq`` is avoided entirely (its ``stringLen`` argument's optionality wasn't confirmed); YAML sequences are instead read element-by-element via ``ESMF_HConfigAsString(..., index=n, rc=rc)``.
 
-============
-Verification
-============
-
-``geogate_phases_hydro_run`` writes one ``hydro_locstream_check_PET<nnnn>.csv`` per PET (``id,lat,lon`` for each locally-owned point). A standalone script, ``verify_hydro_locstream.py`` (kept outside the GeoGate repository, alongside the run's working files; currently written against the NWM RouteLink case specifically), independently reads the coordinate file via ``ncdump`` and checks:
-
-- every point id appears in **exactly one** PET's dump (catches gaps or overlaps in the decomposition itself, not just wrong values), and
-- that dump's ``lat``/``lon`` match the source file's within a tight tolerance.
-
-This has been run successfully end-to-end against the NWM RouteLink CONUS file (4 PETs, all 2,776,734 point ids accounted for exactly once).
-
-``geogate_phases_hydro_run`` also **appends** a new block to ``hydro_data_check_PET<nnnn>.csv`` every time it selects a new data file/record (it does not overwrite the previous block), so one file accumulates the full history of every timestep ingested during a run. Each block starts with its own metadata lines before the ``id,<var1>,<var2>,...`` header:
-
-.. code-block:: text
-
-  # curr_time=2026-09-28T01:05:00
-  # valid_time=2026-09-28T01:00:00
-  # data_file=nwm.t00z.medium_range.channel_rt_1.f001.conus.nc
-  # time_record=1
-  id,streamflow,velocity
-  101,0.200000,0.010000
-  ...
-
-Note that ``curr_time`` (the model clock's actual current time at that call) and ``valid_time`` (the *selected* file's own time) are recorded separately and are generally different — reconciling that difference via the configured ``time_selection`` mode is exactly the behavior being verified.
-
-A second standalone script, ``verify_hydro_data.py``, reads every block across all PET dump files (merging each PET's own local id subset per timestep), and for **each** timestep independently checks two separate things — deliberately kept as two separate claims, since conflating them is exactly what made an earlier version of this script misleading:
-
-1. **Selection correctness**: recomputes, from ``hydro_config.yaml`` and the data files themselves (via ``ncdump``, and a Python port of ``geogate_hydro_time.F90``'s CF ``units`` parsing), which file/record actually was nearest to that block's own recorded ``curr_time`` — and compares that against what GeoGate reported. Comparing GeoGate's output only against its own self-reported selection (as an earlier version of this script did) cannot catch a selection bug; it only confirms the read path is self-consistent with itself.
-2. **Read/unpack correctness**: independently unpacks that block's ``data_file`` via ``ncdump`` and checks the dumped values against it.
-
-This has been run successfully end-to-end against real NWM data, and deliberately exercised against a synthetic case with wrong values to confirm the read/unpack check actually fails when it should (it's easy to write a checker that always reports PASS by accident).
-
-.. warning::
-  While building this checker, a real bug was caught and is worth flagging for anyone extending either verification script: ``ncdump`` prints ``_`` (not a number) for any cell equal to a variable's ``_FillValue``/``missing_value``. A naive "extract every number with a regex" parse silently drops those tokens, which desyncs every later value from its id when zipped positionally against another variable read the same way — confirmed directly against the real ``streamflow`` variable (67,154 fill cells; the token count was off by exactly that many). Both scripts now tokenize by splitting on commas and explicitly handle ``_`` as a fill marker, preserving position.
-
 ===========
 Limitations
 ===========
 
-- Of the ``time_selection`` modes, only ``nearest``, ``lower``, and ``upper`` are implemented; ``linear`` is accepted by the config schema but errors out at startup.
 - Data files are assumed to already share the coordinate file's point ordering (no reordering is applied to them), and to share identical variable packing/type/rank across all configured ``data_files``.
-- No destination-Mesh regrid or NUOPC export-state realization — the LocStream and its fields are built and filled, but not yet connected to another component.
-- The per-PET CSV dumps are verification aids, not permanent features.
+- ``ExportMeshFile`` must describe the same points, in the same order, as ``coord_file`` (see "Export Side" above) — a mismatched point count is caught as a hard error, but a mismatched *order* with the same count is not currently detected and would silently export values against the wrong points.
+- ``linear`` does not extrapolate past either end of the configured records, the same as ``lower``/``upper``.
