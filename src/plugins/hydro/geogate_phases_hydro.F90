@@ -13,13 +13,14 @@ module geogate_phases_hydro
   use ESMF, only: ESMF_Clock, ESMF_ClockGet
   use ESMF, only: ESMF_Time, ESMF_TimeGet
   use ESMF, only: ESMF_TimeInterval, ESMF_TimeIntervalGet
-  use ESMF, only: operator(-), operator(<=), operator(>=)
+  use ESMF, only: operator(-), operator(<=), operator(>=), operator(==)
   use ESMF, only: ESMF_DistGrid, ESMF_DistGridCreate, ESMF_DistGridGet
   use ESMF, only: ESMF_LocStream, ESMF_LocStreamCreate, ESMF_LocStreamAddKey
   use ESMF, only: ESMF_COORDSYS_SPH_DEG, ESMF_DATACOPY_REFERENCE
-  use ESMF, only: ESMF_Field, ESMF_FieldCreate, ESMF_FieldGet
-  use ESMF, only: ESMF_TYPEKIND_R8
-  use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_LOGMSG_ERROR
+  use ESMF, only: ESMF_Field, ESMF_FieldGet
+  use ESMF, only: ESMF_State, ESMF_StateGet
+  use ESMF, only: ESMF_GeomType_Flag, ESMF_GEOMTYPE_LOCSTREAM
+  use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_LOGMSG_WARNING, ESMF_LOGMSG_ERROR
   use ESMF, only: ESMF_SUCCESS, ESMF_FAILURE, ESMF_MAXSTR, ESMF_KIND_R8
 
   use NUOPC, only: NUOPC_CompAttributeGet
@@ -45,12 +46,22 @@ module geogate_phases_hydro
   ! Private module data (built once on the first call, reused thereafter)
   !-----------------------------------------------------------------------------
 
+  ! Wraps a pointer so an array of them can each independently reference
+  ! either an export-state field's own memory, or (if a variable has no
+  ! matching export field) a small locally-allocated fallback buffer -- see
+  ! ResolveExportFields
+  type :: HydroFieldPtr
+     real(ESMF_KIND_R8), pointer :: p(:) => null()
+  end type HydroFieldPtr
+
   logical, save :: first_call = .true.
   type(HydroConfigType), save :: config
   type(ESMF_DistGrid), save :: distgridHydro
   type(ESMF_LocStream), save :: locstreamHydro
-  type(ESMF_Field), allocatable, save :: fieldsHydro(:)
   integer, save :: mpiComm, myPet, localCount, nptsGlobal
+
+  type(HydroFieldPtr), allocatable, save :: varData(:)      ! one per config%variableNames(n)
+  logical, allocatable, save :: hasExportField(:)           ! .true. if varData(n)%p is an export field
 
   real(ESMF_KIND_R8), allocatable, save :: lat(:), lon(:)   ! SAVE: referenced by ESMF_LocStreamAddKey below
   integer, allocatable, save :: seqIndexList(:)             ! local target-order global sequence indices
@@ -67,8 +78,6 @@ module geogate_phases_hydro
   logical, allocatable, save :: varHasFillValue(:)
   real(ESMF_KIND_R8), allocatable, save :: varFillValueRaw(:)
   integer, save :: selectedTimeIndex = -1
-
-  logical, save :: dataDumpStarted = .false.   ! hydro_data_check_PET*.csv: replace once, append after
 
   character(ESMF_MAXSTR), save :: hydroConfigFile = "hydro_config.yaml"
   character(*), parameter :: modName = "(geogate_phases_hydro)"
@@ -137,6 +146,9 @@ contains
        call BuildLocStreamAndFields(rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       call ResolveExportFields(gcomp, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
        call IndexDataFileTimes(rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -188,15 +200,14 @@ contains
 
   subroutine BuildLocStreamAndFields(rc)
 
-    ! Builds the DistGrid/LocStream/fields from the coordinate file, and
-    ! writes the coordinate verification dump. Runs once, from first_call.
+    ! Builds the DistGrid/LocStream from the coordinate file. Runs once,
+    ! from first_call.
 
     ! input/output variables
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: n, iounit
-    character(ESMF_MAXSTR) :: dumpFile
+    integer :: n
     integer, allocatable :: reorderIndexGlobal(:)
     integer, allocatable :: compdof(:)
     character(len=*), parameter :: subname = trim(modName)//':(BuildLocStreamAndFields) '
@@ -230,15 +241,6 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     deallocate(compdof)
 
-    ! Coordinate verification dump (see docs/source/hydro.rst: Verification)
-    write(dumpFile, fmt='(A,I4.4,A)') 'hydro_locstream_check_PET', myPet, '.csv'
-    open(newunit=iounit, file=trim(dumpFile), status='replace', action='write')
-    write(iounit, '(A)') 'id,lat,lon'
-    do n = 1, localCount
-       write(iounit, '(I0,",",F0.6,",",F0.6)') pointIdLocal(n), lat(n), lon(n)
-    end do
-    close(iounit)
-
     locstreamHydro = ESMF_LocStreamCreate(distgrid=distgridHydro, coordSys=ESMF_COORDSYS_SPH_DEG, &
        name="hydro", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -251,16 +253,122 @@ contains
        datacopyflag=ESMF_DATACOPY_REFERENCE, keyUnits="Degrees", keyLongName="Longitude", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    allocate(fieldsHydro(size(config%variableNames)))
-    do n = 1, size(config%variableNames)
-       fieldsHydro(n) = ESMF_FieldCreate(locstreamHydro, typekind=ESMF_TYPEKIND_R8, &
-          name=trim(config%variableNames(n)), rc=rc)
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine BuildLocStreamAndFields
+
+  !-----------------------------------------------------------------------------
+
+  subroutine ResolveExportFields(gcomp, rc)
+
+    ! Matches each config%variableNames(n)/exportVarNames(n) against the
+    ! fields actually present in the export state (populated separately by
+    ! geogate_nuopc.F90's RealizeProvided, e.g. from an ESMF mesh file via
+    ! ExportType=locstream), and points varData(n)%p directly at each
+    ! matched field's own memory -- no separate buffer or copy. A variable
+    ! with no matching export field (wrong name, not on a LocStream) is
+    ! skipped, not an error: varData(n)%p gets a small fallback buffer
+    ! instead, so ReadAndFillFields still has somewhere to write it (see
+    ! docs/source/hydro.rst).
+
+    ! input/output variables
+    type(ESMF_GridComp), intent(in) :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: n, k, itemCount
+    type(ESMF_State) :: exportState
+    type(ESMF_Field) :: field
+    type(ESMF_GeomType_Flag) :: geomtype
+    character(ESMF_MAXSTR), allocatable :: itemNameList(:)
+    logical :: isFound
+    character(len=*), parameter :: subname = trim(modName)//':(ResolveExportFields) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    allocate(hasExportField(size(config%variableNames)))
+    allocate(varData(size(config%variableNames)))
+    hasExportField(:) = .false.
+
+    call NUOPC_ModelGet(gcomp, exportState=exportState, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_StateGet(exportState, itemCount=itemCount, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (itemCount > 0) then
+       allocate(itemNameList(itemCount))
+       call ESMF_StateGet(exportState, itemNameList=itemNameList, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       do n = 1, size(config%variableNames)
+          isFound = .false.
+          do k = 1, itemCount
+             if (trim(itemNameList(k)) == trim(config%exportVarNames(n))) then
+                isFound = .true.
+                exit
+             end if
+          end do
+
+          if (.not. isFound) then
+             call ESMF_LogWrite(trim(subname)//": WARNING export field '"// &
+                trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
+                trim(config%variableNames(n))//"') not found in export state -- skipping", &
+                ESMF_LOGMSG_WARNING)
+             cycle
+          end if
+
+          call ESMF_StateGet(exportState, itemName=trim(config%exportVarNames(n)), field=field, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          call ESMF_FieldGet(field, geomtype=geomtype, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          if (.not. (geomtype == ESMF_GEOMTYPE_LOCSTREAM)) then
+             call ESMF_LogWrite(trim(subname)//": WARNING export field '"// &
+                trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
+                trim(config%variableNames(n))//"') is not on a LocStream -- skipping", &
+                ESMF_LOGMSG_WARNING)
+             cycle
+          end if
+
+          call ESMF_FieldGet(field, farrayptr=varData(n)%p, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Guard against a name/geomtype match whose LocStream has a
+          ! different point count/decomposition than hydro's own (e.g. an
+          ! unrelated mesh file) -- writing raw(:), sized for hydro's own
+          ! localCount, into varData(n)%p otherwise overruns its actual
+          ! allocation
+          if (size(varData(n)%p) /= localCount) then
+             call ESMF_LogWrite(trim(subname)//": ERROR export field '"// &
+                trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
+                trim(config%variableNames(n))//"') local size does not match hydro's own "// &
+                "decomposition -- check that ExportMeshFile matches coord_file (same point "// &
+                "count/order)", ESMF_LOGMSG_ERROR)
+             rc = ESMF_FAILURE
+             return
+          end if
+
+          hasExportField(n) = .true.
+       end do
+
+       deallocate(itemNameList)
+    else
+       call ESMF_LogWrite(trim(subname)//": export state has no fields -- hydro export disabled", &
+          ESMF_LOGMSG_INFO)
+    end if
+
+    ! Fallback buffer for any variable with no matching export field, so
+    ! ReadAndFillFields still has a place to write it
+    do n = 1, size(config%variableNames)
+       if (.not. hasExportField(n)) allocate(varData(n)%p(localCount))
     end do
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
-  end subroutine BuildLocStreamAndFields
+  end subroutine ResolveExportFields
 
   !-----------------------------------------------------------------------------
 
@@ -475,9 +583,8 @@ contains
   subroutine ReadAndFillFields(timeIndex, currTime, rc)
 
     ! Reads every configured variable from the selected data file/record,
-    ! unpacks it, writes it into the matching field, and appends a block to
-    ! the per-PET data verification dump (see docs/source/hydro.rst:
-    ! Data Ingest, Verification).
+    ! unpacks it, and writes it into the matching field (see
+    ! docs/source/hydro.rst: Data Ingest).
 
     ! input/output variables
     integer, intent(in) :: timeIndex
@@ -485,18 +592,12 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: n, m, iounit
-    character(ESMF_MAXSTR) :: dumpFile
+    integer :: n, m
     character(ESMF_MAXSTR) :: message
-    character(ESMF_MAXSTR) :: header
-    character(ESMF_MAXSTR) :: lineBuf
-    character(32) :: fieldStr
     character(ESMF_MAXSTR) :: dataFile
     character(ESMF_MAXSTR) :: validTimeStr
     character(ESMF_MAXSTR) :: currTimeStr
     real(ESMF_KIND_R8), allocatable :: raw(:)
-    real(ESMF_KIND_R8), pointer :: dataptr(:)
-    real(ESMF_KIND_R8), allocatable, save :: unpacked(:,:)
     character(len=*), parameter :: subname = trim(modName)//':(ReadAndFillFields) '
     !---------------------------------------------------------------------------
 
@@ -504,24 +605,21 @@ contains
 
     dataFile = config%dataFiles(timeFileIndex(timeIndex))
 
-    if (.not. allocated(unpacked)) allocate(unpacked(localCount, size(config%variableNames)))
-
     do n = 1, size(config%variableNames)
        call PioReadVariable(dataFile, mpiComm, myPet, nptsGlobal, seqIndexList, &
           trim(config%variableNames(n)), varXtype(n), varNdims(n), timeFrameIndex(timeIndex), raw, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       unpacked(:,n) = raw(:)*varScaleFactor(n) + varAddOffset(n)
+       ! varData(n)%p either IS an export field's own memory (hasExportField(n)
+       ! .true.) or a small fallback buffer (see ResolveExportFields) -- either
+       ! way, writing here is the only fill/copy step needed
+       varData(n)%p(:) = raw(:)*varScaleFactor(n) + varAddOffset(n)
        if (varHasFillValue(n)) then
           do m = 1, localCount
-             if (raw(m) == varFillValueRaw(n)) unpacked(m,n) = fillValue
+             if (raw(m) == varFillValueRaw(n)) varData(n)%p(m) = fillValue
           end do
        end if
        deallocate(raw)
-
-       call ESMF_FieldGet(fieldsHydro(n), farrayptr=dataptr, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       dataptr(:) = unpacked(:,n)
     end do
 
     call ESMF_TimeGet(timeValid(timeIndex), timeStringISOFrac=validTimeStr, rc=rc)
@@ -533,33 +631,6 @@ contains
        ' filled fields from '//trim(dataFile)//' record ', timeFrameIndex(timeIndex), &
        ' (time index ', timeIndex, '), valid_time='//trim(validTimeStr)//', curr_time='//trim(currTimeStr)
     call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-
-    write(dumpFile, fmt='(A,I4.4,A)') 'hydro_data_check_PET', myPet, '.csv'
-    header = 'id'
-    do n = 1, size(config%variableNames)
-       header = trim(header)//','//trim(config%variableNames(n))
-    end do
-    if (.not. dataDumpStarted) then
-       open(newunit=iounit, file=trim(dumpFile), status='replace', action='write')
-       dataDumpStarted = .true.
-    else
-       open(newunit=iounit, file=trim(dumpFile), status='old', position='append', action='write')
-    end if
-    write(iounit, '(A)') '# curr_time='//trim(currTimeStr)
-    write(iounit, '(A)') '# valid_time='//trim(validTimeStr)
-    write(iounit, '(A)') '# data_file='//trim(dataFile)
-    write(iounit, '(A,I0)') '# time_record=', timeFrameIndex(timeIndex)
-    write(iounit, '(A)') trim(header)
-    do m = 1, localCount
-       write(fieldStr, fmt='(I0)') pointIdLocal(m)
-       lineBuf = trim(fieldStr)
-       do n = 1, size(config%variableNames)
-          write(fieldStr, fmt='(F0.6)') unpacked(m,n)
-          lineBuf = trim(lineBuf)//','//trim(fieldStr)
-       end do
-       write(iounit, '(A)') trim(lineBuf)
-    end do
-    close(iounit)
 
   end subroutine ReadAndFillFields
 

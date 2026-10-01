@@ -12,7 +12,7 @@ module geogate_hydro_config
   use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_LOGMSG_ERROR
   use ESMF, only: ESMF_SUCCESS, ESMF_FAILURE, ESMF_MAXSTR
 
-  use geogate_share, only: ChkErr
+  use geogate_share, only: ChkErr, StringSplit
 
   implicit none
   private
@@ -24,6 +24,7 @@ module geogate_hydro_config
   public :: HydroConfigRead
 
   private :: ReadStringSeq
+  private :: ParseExportNames
 
   type, public :: HydroConfigType
      character(len=ESMF_MAXSTR) :: coordFile = ""
@@ -35,6 +36,7 @@ module geogate_hydro_config
      character(len=ESMF_MAXSTR) :: timeVarName = ""
      character(len=ESMF_MAXSTR) :: timeSelection = "nearest"   ! "nearest" | "lower" | "upper" | "linear" (not yet implemented)
      character(ESMF_MAXSTR), allocatable :: variableNames(:)
+     character(ESMF_MAXSTR), allocatable :: exportVarNames(:)   ! export-state field name per variableNames(n)
   end type HydroConfigType
 
   !-----------------------------------------------------------------------------
@@ -112,6 +114,14 @@ contains
     call ReadStringSeq(hconfigHydro, "variables", config%variableNames, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Each "variables" entry may optionally map a data-file variable name to
+    ! a different export-state field name as "dataVarName:exportName" (the
+    ! coupled system's own field naming convention, from its field
+    ! dictionary, does not always match the data file's variable names). A
+    ! bare name (no colon) exports under that same name.
+    call ParseExportNames(config%variableNames, config%exportVarNames, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     ! Clean up HConfig handles
     call ESMF_HConfigDestroy(hconfigHydro, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -170,5 +180,48 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   end subroutine ReadStringSeq
+
+  !-----------------------------------------------------------------------------
+
+  subroutine ParseExportNames(variableNames, exportVarNames, rc)
+
+    ! Splits each variableNames(n) on ':' into (data variable name, export
+    ! name); a bare name (no colon) exports under that same name. Rewrites
+    ! variableNames(n) in place to just the data-variable part.
+
+    ! input/output variables
+    character(ESMF_MAXSTR), intent(inout) :: variableNames(:)
+    character(ESMF_MAXSTR), allocatable, intent(out) :: exportVarNames(:)
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: n
+    character(len=:), allocatable :: parts(:)
+    character(len=*), parameter :: subname = trim(modName)//':(ParseExportNames) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    allocate(exportVarNames(size(variableNames)))
+
+    do n = 1, size(variableNames)
+       parts = StringSplit(trim(variableNames(n)), ":")
+       if (size(parts, dim=1) == 1) then
+          exportVarNames(n) = trim(variableNames(n))
+          call ESMF_LogWrite(trim(subname)//": no export name given for variable '"// &
+             trim(variableNames(n))//"' -- using the same name for export", ESMF_LOGMSG_INFO)
+       else if (size(parts, dim=1) == 2) then
+          variableNames(n) = trim(parts(1))
+          exportVarNames(n) = trim(parts(2))
+       else
+          call ESMF_LogWrite(trim(subname)//": ERROR malformed 'variables' entry '"// &
+             trim(variableNames(n))//"' -- expected 'dataVarName' or 'dataVarName:exportName'", &
+             ESMF_LOGMSG_ERROR)
+          rc = ESMF_FAILURE
+          return
+       end if
+    end do
+
+  end subroutine ParseExportNames
 
 end module geogate_hydro_config
