@@ -348,17 +348,8 @@ contains
     ! Query for KeepFieldList (only list of fields will be available)
     !------------------
 
-    call NUOPC_CompAttributeGet(gcomp, name="KeepFieldList", value=cvalue, &
-      isPresent=isPresent, isSet=isSet, rc=rc)
+    fieldNamesToKeep = AttributeGetList(gcomp, name="KeepFieldList", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    if (isPresent .and. isSet) then
-       ! Split string
-       fieldNamesToKeep = StringSplit(trim(cvalue), ":")
-       do n = 1, size(fieldNamesToKeep, dim=1)
-          write(message, fmt='(A,I2.2,A)') trim(subname)//': KeepFieldList(',n,') = '//trim(fieldNamesToKeep(n))
-          call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-       end do
-    endif
 
     !------------------
     ! Query for RemoveFieldList (remove fields from mirrored field list)
@@ -367,28 +358,19 @@ contains
     if (size(fieldNamesToKeep, dim=1) > 0) then
        call ESMF_LogWrite(trim(subname)//': KeepFieldList is provided. Neglecting entries of RemoveFieldList!', ESMF_LOGMSG_INFO)
     else
-       call NUOPC_CompAttributeGet(gcomp, name="RemoveFieldList", value=cvalue, &
-          isPresent=isPresent, isSet=isSet, rc=rc)
+       ! Query for RemoveFieldList (remove fields from mirrored field list)
+       fieldNamesToRemove = AttributeGetList(gcomp, name="RemoveFieldList", rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       if (isPresent .and. isSet) then
-          ! Add scalar field to remove list
-          if (trim(scalar_field_name) /= '') then
-             if (trim(cvalue) == '') then
-                cvalue = trim(scalar_field_name)
-             else
-                cvalue = trim(cvalue)//':'//trim(scalar_field_name)
-             end if
-          end if
-          ! Split string
-          fieldNamesToRemove = StringSplit(trim(cvalue), ":")
-          do n = 1, size(fieldNamesToKeep, dim=1)
-             write(message, fmt='(A,I2.2,A)') trim(subname)//': RemoveFieldList(',n,') = '//trim(fieldNamesToRemove(n))
-             call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+       if (size(fieldNamesToRemove, dim=1) > 0) then
+          ! Print out field names that will be removed
+          do n = 1, size(fieldNamesToRemove, dim=1)
+             call ESMF_LogWrite(trim(subname)//': '//trim(fieldNamesToRemove(n))//' will be removed', ESMF_LOGMSG_INFO)
           end do
        else
           ! Allocate temporary array for field list
           if (trim(scalar_field_name) /= "") then
+             if allocated(fieldNamesToRemove) deallocate(fieldNamesToRemove)
              allocate(fieldNamesToRemove(1))
              fieldNamesToRemove(1) = trim(scalar_field_name)
           end if
