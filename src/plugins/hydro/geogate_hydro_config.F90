@@ -31,12 +31,12 @@ module geogate_hydro_config
      character(len=ESMF_MAXSTR) :: idVarName = ""
      character(len=ESMF_MAXSTR) :: latVarName = ""
      character(len=ESMF_MAXSTR) :: lonVarName = ""
-     character(len=ESMF_MAXSTR) :: orderVarName = ""   ! optional; blank => use on-disk order as-is
+     character(len=ESMF_MAXSTR) :: orderVarName = ""
      character(ESMF_MAXSTR), allocatable :: dataFiles(:)
      character(len=ESMF_MAXSTR) :: timeVarName = ""
-     character(len=ESMF_MAXSTR) :: timeSelection = "nearest"   ! "nearest" | "lower" | "upper" | "linear" (not yet implemented)
+     character(len=ESMF_MAXSTR) :: timeSelection = "nearest"
      character(ESMF_MAXSTR), allocatable :: variableNames(:)
-     character(ESMF_MAXSTR), allocatable :: exportVarNames(:)   ! export-state field name per variableNames(n)
+     character(ESMF_MAXSTR), allocatable :: exportVarNames(:)
   end type HydroConfigType
 
   !-----------------------------------------------------------------------------
@@ -68,14 +68,15 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(configFile), ESMF_LOGMSG_INFO)
 
-    ! Load the YAML document and descend into the top-level "hydro:" map
+    ! Load plugin configuration from the YAML file into an ESMF_HConfig handle
     hconfig = ESMF_HConfigCreate(filename=trim(configFile), rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Create a sub-handle for the "hydro:" section of the config file
     hconfigHydro = ESMF_HConfigCreateAt(hconfig, keyString="hydro", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Required scalar entries
+    ! Read the required configuration values from the "hydro:" section of the config file
     config%coordFile = trim(ESMF_HConfigAsString(hconfigHydro, keyString="coord_file", rc=rc))
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -88,7 +89,7 @@ contains
     config%lonVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="lon_variable", rc=rc))
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Optional (see docs/source/hydro.rst: Runtime Configuration Options)
+    ! Read optional configuration values
     isDefined = ESMF_HConfigIsDefined(hconfigHydro, keyString="order_variable", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     if (isDefined) then
@@ -96,6 +97,7 @@ contains
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
 
+    ! Query the list of data files to read
     call ReadStringSeq(hconfigHydro, "data_files", config%dataFiles, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -103,7 +105,7 @@ contains
     config%timeVarName = trim(ESMF_HConfigAsString(hconfigHydro, keyString="time_variable", rc=rc))
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Optional (see docs/source/hydro.rst: Runtime Configuration Options)
+    ! Optional time selection method for each data file (default is "nearest")
     isDefined = ESMF_HConfigIsDefined(hconfigHydro, keyString="time_selection", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     if (isDefined) then
@@ -111,6 +113,7 @@ contains
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
     end if
 
+    ! Query the list of variable names to read from each data file
     call ReadStringSeq(hconfigHydro, "variables", config%variableNames, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -153,13 +156,17 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Create a sub-handle for the sequence of strings under hconfigParent(keyString:)
     hconfigSeq = ESMF_HConfigCreateAt(hconfigParent, keyString=trim(keyString), rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Query the number of items in the sequence
     nitem = ESMF_HConfigGetSize(hconfigSeq, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Check that at least one item was found
     if (nitem <= 0) then
        call ESMF_LogWrite(trim(subname)//": ERROR at least one entry is required under '"// &
           trim(keyString)//":'", ESMF_LOGMSG_ERROR)
@@ -167,17 +174,25 @@ contains
        return
     end if
 
+    ! Allocate the output array
     allocate(valueList(nitem))
+
+    ! Loop over the sequence items and read each one as a string
     do n = 1, nitem
+       ! Read the nth item in the sequence as a string
        valueList(n) = trim(ESMF_HConfigAsString(hconfigSeq, index=n, rc=rc))
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       ! Log the value read for debugging purposes
        write(message, fmt='(A,I3,A)') trim(subname)//': '//trim(keyString)//'(', n, ') = '//trim(valueList(n))
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
     end do
 
+    ! Clean up the sequence sub-handle
     call ESMF_HConfigDestroy(hconfigSeq, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine ReadStringSeq
 
@@ -201,11 +216,17 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Allocate the exportVarNames array to hold the export names corresponding to each variable name
     allocate(exportVarNames(size(variableNames)))
 
+    ! Loop over each variable name and split it on ':' to determine the data variable name and export name
     do n = 1, size(variableNames)
+       ! Split variableNames(n) on ':' into parts
        parts = StringSplit(trim(variableNames(n)), ":")
+
+       ! Determine the export name based on the number of parts obtained from the split
        if (size(parts, dim=1) == 1) then
           exportVarNames(n) = trim(variableNames(n))
           call ESMF_LogWrite(trim(subname)//": no export name given for variable '"// &
@@ -221,6 +242,8 @@ contains
           return
        end if
     end do
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine ParseExportNames
 

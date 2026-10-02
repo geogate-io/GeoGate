@@ -2,8 +2,7 @@ module geogate_hydro_pio
 
   !-----------------------------------------------------------------------------
   ! Parallel (PIO-based), decomposed NetCDF reads: each PET fetches only the
-  ! on-disk positions it owns via PIO_initdecomp + a "compdof" array. See
-  ! docs/source/hydro.rst: Parallel Decomposition Implementation, Data Ingest.
+  ! on-disk positions it owns via PIO_initdecomp + a "compdof" array.
   !-----------------------------------------------------------------------------
 
   use netcdf, only: NF90_INT, NF90_FLOAT, NF90_DOUBLE
@@ -49,21 +48,21 @@ contains
     ! input/output variables
     character(len=*), intent(in) :: coordFile
     integer, intent(in) :: mpiComm
-    integer, intent(in) :: myPet             ! 0-based rank of this PET within mpiComm
+    integer, intent(in) :: myPet
     integer, intent(in) :: npts
-    integer, intent(in) :: compdof(:)        ! 1-based on-disk positions this PET owns (target order)
+    integer, intent(in) :: compdof(:)
     character(len=*), intent(in) :: idVarName
     character(len=*), intent(in) :: latVarName
     character(len=*), intent(in) :: lonVarName
     real(ESMF_KIND_R8), allocatable, intent(out) :: lat(:)
     real(ESMF_KIND_R8), allocatable, intent(out) :: lon(:)
-    integer, allocatable, intent(out) :: pointId(:)   ! idVarName's value for each local point
+    integer, allocatable, intent(out) :: pointId(:)
     integer, intent(out) :: rc
 
     ! local variables
     integer :: ierr
     integer :: localCount
-    real(kind=4), allocatable :: latLocal_r4(:), lonLocal_r4(:)   ! KIND=4 required, see hydro.rst: Build Gotchas
+    real(kind=4), allocatable :: latLocal_r4(:), lonLocal_r4(:)
     type(iosystem_desc_t) :: iosystem
     type(file_desc_t) :: pioFile
     type(io_desc_t) :: iodescReal
@@ -75,13 +74,16 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(coordFile), ESMF_LOGMSG_INFO)
 
+    ! Allocate local buffers for the decomposed read of lat/lon/pointId.
     localCount = size(compdof)
     allocate(latLocal_r4(localCount), lonLocal_r4(localCount))
     allocate(lat(localCount), lon(localCount), pointId(localCount))
 
+    ! Initialize PIO
     call PIO_init(comp_rank=myPet, comp_comm=mpiComm, num_iotasks=1, num_aggregator=0, &
        stride=1, rearr=PIO_rearr_subset, iosystem=iosystem)
 
+    ! Open the coordinate file and inquire the variable IDs for lat/lon/pointId.
     ierr = PIO_openfile(iosystem, pioFile, PIO_iotype_netcdf, trim(coordFile))
     if (PioChk(ierr, 'PIO_openfile for '//trim(coordFile), rc)) return
 
@@ -94,6 +96,7 @@ contains
     ierr = PIO_inq_varid(pioFile, trim(idVarName), idVardesc)
     if (PioChk(ierr, 'PIO_inq_varid for '//trim(idVarName), rc)) return
 
+    ! Initialize the decompositions for the lat/lon/pointId reads, then read the data into local buffers.
     call PIO_initdecomp(iosystem, PIO_real, (/ npts /), compdof, iodescReal)
     call PIO_initdecomp(iosystem, PIO_int, (/ npts /), compdof, iodescInt)
 
@@ -106,14 +109,21 @@ contains
     call PIO_read_darray(pioFile, idVardesc, iodescInt, pointId, ierr)
     if (PioChk(ierr, 'PIO_read_darray for '//trim(idVarName), rc)) return
 
+    ! Convert the local lat/lon buffers from real*4 to real*8 for the output arrays.
     lat(:) = real(latLocal_r4(:), ESMF_KIND_R8)
     lon(:) = real(lonLocal_r4(:), ESMF_KIND_R8)
 
+    ! Free the PIO decompositions
     call PIO_freedecomp(iosystem, iodescReal)
     call PIO_freedecomp(iosystem, iodescInt)
+
+    ! Close the PIO file
     call PIO_closefile(pioFile)
+
+    ! Finalize PIO
     call PIO_finalize(iosystem, ierr)
 
+    ! Clean memory
     deallocate(latLocal_r4, lonLocal_r4)
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
@@ -159,54 +169,86 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(varName)//' in '//trim(dataFile), ESMF_LOGMSG_INFO)
 
+    ! Allocate the output array for the decomposed read of the variable
     localCount = size(compdof)
     allocate(values(localCount))
 
+    ! Initialize PIO
     call PIO_init(comp_rank=myPet, comp_comm=mpiComm, num_iotasks=1, num_aggregator=0, &
        stride=1, rearr=PIO_rearr_subset, iosystem=iosystem)
 
+    ! Open the data file and inquire the variable ID for the requested variable
     ierr = PIO_openfile(iosystem, pioFile, PIO_iotype_netcdf, trim(dataFile))
     if (PioChk(ierr, 'PIO_openfile for '//trim(dataFile), rc)) return
 
     ierr = PIO_inq_varid(pioFile, trim(varName), varDesc)
     if (PioChk(ierr, 'PIO_inq_varid for '//trim(varName), rc)) return
 
+    ! If the variable has more than one dimension, set the frame index for the read
     if (ndims > 1) then
        frame = int(frameIndex, kind(frame))
        call PIO_setframe(pioFile, varDesc, frame)
     end if
 
+    ! Read the variable data into a local buffer based on its on-disk type, then convert to real*8 for the output array
     select case (xtype)
     case (NF90_INT)
+       ! Allocate a local integer buffer for the decomposed read of the variable
        allocate(intBuf(localCount))
+
+       ! Initialize the PIO decomposition for the integer read, then read the data into the local buffer
        call PIO_initdecomp(iosystem, PIO_int, (/ npts /), compdof, iodesc)
        call PIO_read_darray(pioFile, varDesc, iodesc, intBuf, ierr)
        if (PioChk(ierr, 'PIO_read_darray for '//trim(varName), rc)) return
+
+       ! Convert the local integer buffer to real*8 for the output array
        values(:) = real(intBuf(:), ESMF_KIND_R8)
+
+       ! Clean up the local integer buffer
        deallocate(intBuf)
     case (NF90_FLOAT)
+       ! Allocate a local real*4 buffer for the decomposed read of the variable
        allocate(r4Buf(localCount))
+
+       ! Initialize the PIO decomposition for the real*4 read, then read the data into the local buffer
        call PIO_initdecomp(iosystem, PIO_real, (/ npts /), compdof, iodesc)
        call PIO_read_darray(pioFile, varDesc, iodesc, r4Buf, ierr)
        if (PioChk(ierr, 'PIO_read_darray for '//trim(varName), rc)) return
+
+       ! Convert the local real*4 buffer to real*8 for the output array
        values(:) = real(r4Buf(:), ESMF_KIND_R8)
+
+       ! Clean up the local real*4 buffer
        deallocate(r4Buf)
     case (NF90_DOUBLE)
+       ! Allocate a local real*8 buffer for the decomposed read of the variable
        allocate(r8Buf(localCount))
+       
+       ! Initialize the PIO decomposition for the real*8 read, then read the data into the local buffer
        call PIO_initdecomp(iosystem, PIO_double, (/ npts /), compdof, iodesc)
        call PIO_read_darray(pioFile, varDesc, iodesc, r8Buf, ierr)
        if (PioChk(ierr, 'PIO_read_darray for '//trim(varName), rc)) return
+
+       ! Copy the local real*8 buffer to the output array
        values(:) = r8Buf(:)
+
+       ! Clean up the local real*8 buffer
        deallocate(r8Buf)
     case default
+       ! Unsupported on-disk type for the variable; log an error and return failure
        call ESMF_LogWrite(trim(subname)//': ERROR unsupported on-disk type for '//trim(varName)// &
           ' (only NF90_INT, NF90_FLOAT, NF90_DOUBLE are supported)', ESMF_LOGMSG_ERROR)
        rc = ESMF_FAILURE
        return
     end select
 
+    ! Free the PIO decomposition
     call PIO_freedecomp(iosystem, iodesc)
+
+    ! Close the PIO file
     call PIO_closefile(pioFile)
+
+    ! Finalize PIO
     call PIO_finalize(iosystem, ierr)
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
@@ -226,6 +268,7 @@ contains
     character(len=*), parameter :: subname = trim(modName)//':(PioChk) '
     !---------------------------------------------------------------------------
 
+    ! Check the PIO error code and log an error message if it indicates failure. Return a logical flag indicating whether an error occurred.
     PioChk = .false.
     if (ierr /= PIO_noerr) then
        call ESMF_LogWrite(trim(subname)//': ERROR '//trim(msg)//' failed', ESMF_LOGMSG_ERROR)

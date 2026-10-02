@@ -38,9 +38,7 @@ contains
 
   subroutine HydroReadReorderIndex(coordFile, idVarName, orderVarName, reorderIndex, npts, rc)
 
-    ! Reads the point count and reorderIndex(:) (0-based; identity if
-    ! orderVarName is blank). See docs/source/hydro.rst: Parallel
-    ! Decomposition Implementation.
+    ! Reads the point count and reorderIndex(:) (0-based; identity if orderVarName is blank).
 
     ! input/output variables
     character(len=*), intent(in) :: coordFile
@@ -60,6 +58,7 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(coordFile), ESMF_LOGMSG_INFO)
 
+    ! Open the coordinate file in read-only mode
     call NcChk(nf90_open(trim(coordFile), NF90_NOWRITE, ncid), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -71,8 +70,10 @@ contains
     call NcChk(nf90_inquire_dimension(ncid, dimids(1), len=npts), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Allocate the reorderIndex array to hold the point reordering indices
     allocate(reorderIndex(npts))
 
+    ! If orderVarName is non-blank, read the reorderIndex variable from the file; otherwise, fill it with the identity mapping
     if (len_trim(orderVarName) > 0) then
        call NcChk(nf90_inq_varid(ncid, trim(orderVarName), varid), rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -84,6 +85,7 @@ contains
        end do
     end if
 
+    ! Close the NetCDF file
     call NcChk(nf90_close(ncid), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -96,8 +98,7 @@ contains
   subroutine HydroReadVarMeta(dataFile, varName, xtype, ndims, scaleFactor, addOffset, &
        hasFillValue, fillValueRaw, rc)
 
-    ! Reads a data variable's on-disk type/rank/packing metadata (see
-    ! docs/source/hydro.rst: Data Ingest)
+    ! Reads a data variable's on-disk type/rank/packing metadata
 
     ! input/output variables
     character(len=*), intent(in) :: dataFile
@@ -119,14 +120,17 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called for '//trim(varName)//' in '//trim(dataFile), ESMF_LOGMSG_INFO)
 
+    ! Open the data file in read-only mode
     call NcChk(nf90_open(trim(dataFile), NF90_NOWRITE, ncid), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Read the variable's metadata: on-disk type, rank, and packing attributes (scale_factor, add_offset, _FillValue/missing_value)
     call NcChk(nf90_inq_varid(ncid, trim(varName), varid), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call NcChk(nf90_inquire_variable(ncid, varid, xtype=xtype, ndims=ndims), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Read the packing attributes, if they exist; otherwise, use default values
     scaleFactor = 1.0d0
     statusAtt = nf90_get_att(ncid, varid, "scale_factor", attValue)
     if (statusAtt == nf90_noerr) scaleFactor = attValue
@@ -135,6 +139,7 @@ contains
     statusAtt = nf90_get_att(ncid, varid, "add_offset", attValue)
     if (statusAtt == nf90_noerr) addOffset = attValue
 
+    ! Read the fill value attribute, if it exists; otherwise, indicate that there is no fill value
     hasFillValue = .false.
     statusAtt = nf90_get_att(ncid, varid, "_FillValue", attValue)
     if (statusAtt /= nf90_noerr) statusAtt = nf90_get_att(ncid, varid, "missing_value", attValue)
@@ -143,6 +148,7 @@ contains
        fillValueRaw = attValue
     end if
 
+    ! Close the NetCDF file    
     call NcChk(nf90_close(ncid), rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -162,6 +168,7 @@ contains
     character(len=*), parameter :: subname = trim(modName)//':(NcChk) '
     !---------------------------------------------------------------------------
 
+    ! Check the NetCDF status code and log an error if it indicates a failure; otherwise, set rc to success
     if (status /= nf90_noerr) then
        call ESMF_LogWrite(trim(subname)//': NetCDF error: '//trim(nf90_strerror(status)), ESMF_LOGMSG_ERROR)
        rc = ESMF_FAILURE

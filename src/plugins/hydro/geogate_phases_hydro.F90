@@ -1,12 +1,6 @@
 module geogate_phases_hydro
 
-  !-----------------------------------------------------------------------------
-  ! Hydro plugin: builds a parallel-decomposed ESMF_LocStream from a
-  ! configured coordinate file, and fills one ESMF_Field per configured
-  ! variable from a configured list of time-varying data files. Fully
-  ! data-source agnostic (see docs/source/hydro.rst for the config format,
-  ! decomposition design, time_selection modes, and verification).
-  !-----------------------------------------------------------------------------
+  ! Hydro plugin: builds a parallel-decomposed LocStream and fills configured fields from time-varying data files
 
   use ESMF, only: ESMF_GridComp, ESMF_GridCompGet
   use ESMF, only: ESMF_VM, ESMF_VMGet
@@ -46,26 +40,20 @@ module geogate_phases_hydro
   ! Private module data (built once on the first call, reused thereafter)
   !-----------------------------------------------------------------------------
 
-  ! Wraps a pointer so an array of them can each independently reference
-  ! either an export-state field's own memory, or (if a variable has no
-  ! matching export field) a small locally-allocated fallback buffer -- see
-  ! ResolveExportFields
+  ! Points at either an export field's own memory or a local fallback buffer
   type :: HydroFieldPtr
      real(ESMF_KIND_R8), pointer :: p(:) => null()
   end type HydroFieldPtr
+  type(HydroFieldPtr), allocatable, save :: varData(:)
 
-  logical, save :: first_call = .true.
+  ! Plugin configuration, LocStream, MPI communicator, and local decomposition info
   type(HydroConfigType), save :: config
-  type(ESMF_DistGrid), save :: distgridHydro
-  type(ESMF_LocStream), save :: locstreamHydro
+  type(ESMF_LocStream), save :: locstream
   integer, save :: mpiComm, myPet, localCount, nptsGlobal
 
-  type(HydroFieldPtr), allocatable, save :: varData(:)      ! one per config%variableNames(n)
-  logical, allocatable, save :: hasExportField(:)           ! .true. if varData(n)%p is an export field
-
-  real(ESMF_KIND_R8), allocatable, save :: lat(:), lon(:)   ! SAVE: referenced by ESMF_LocStreamAddKey below
-  integer, allocatable, save :: seqIndexList(:)             ! local target-order global sequence indices
-  integer, allocatable, save :: pointIdLocal(:)             ! local points' id_variable values
+  ! Flat (global) index of the local points in the global coordinate file, and their local IDs
+  integer, allocatable, save :: seqIndexList(:)
+  integer, allocatable, save :: pointIdLocal(:)
 
   ! Flat (file, time-record) index spanning config%dataFiles(:)
   integer, allocatable, save :: timeFileIndex(:)
@@ -77,17 +65,10 @@ module geogate_phases_hydro
   real(ESMF_KIND_R8), allocatable, save :: varScaleFactor(:), varAddOffset(:)
   logical, allocatable, save :: varHasFillValue(:)
   real(ESMF_KIND_R8), allocatable, save :: varFillValueRaw(:)
-  integer, save :: selectedLowerIndex = -1
-  integer, save :: selectedUpperIndex = -1
 
-  ! Cached RAW (pre-unpack) bracket data for time_selection=linear, so
-  ! BlendAndFillFields can reblend every call (the weight changes
-  ! continuously even while still inside the same bracket) without
-  ! re-reading from disk; also used, with lowerIndex==upperIndex, by
-  ! nearest/lower/upper (see geogate_phases_hydro_run)
+  ! Cached raw bracket data so BlendAndFillFields can reblend every call without re-reading from disk
   real(ESMF_KIND_R8), allocatable, save :: rawLower(:,:), rawUpper(:,:)
 
-  character(ESMF_MAXSTR), save :: hydroConfigFile = "hydro_config.yaml"
   character(*), parameter :: modName = "(geogate_phases_hydro)"
   character(len=*), parameter :: u_FILE_u = __FILE__
 
@@ -102,10 +83,14 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
+    logical, save :: first_call = .true.
+    integer, save :: selectedLowerIndex = -1
+    integer, save :: selectedUpperIndex = -1
     integer :: n
     logical :: isPresent, isSet
     character(ESMF_MAXSTR) :: cvalue
     character(ESMF_MAXSTR) :: message
+    character(ESMF_MAXSTR) :: hydroConfigFile
     type(ESMF_VM) :: vm
     integer :: petCount
     integer :: lowerIndex, upperIndex
@@ -118,18 +103,18 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
-    !------------------
-    ! First call: read configuration, build the LocStream and fields, and
-    ! index every data file's valid time(s)
-    !------------------
-
+    ! Initialize
     if (first_call) then
-
+       ! Get name of configuration file
+       hydroConfigFile = "hydro_config.yaml"
        call NUOPC_CompAttributeGet(gcomp, name="HydroConfigFile", value=cvalue, &
           isPresent=isPresent, isSet=isSet, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       if (isPresent .and. isSet) hydroConfigFile = trim(cvalue)
+       if (isPresent .and. isSet) then
+          hydroConfigFile = trim(cvalue)
+       end if
 
+       ! Read configuration file and validate time_selection option
        call HydroConfigRead(hydroConfigFile, config, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -141,70 +126,66 @@ contains
           return
        end if
 
+       ! Get the ESMF VM and MPI communicator, so the plugin can pass them to PIO
        call ESMF_GridCompGet(gcomp, vm=vm, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
        call ESMF_VMGet(vm, localPet=myPet, petCount=petCount, mpiCommunicator=mpiComm, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       ! Build the LocStream and fields
        call BuildLocStreamAndFields(rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       ! Match each configured variable's export name against the export state and points varData(n)%p at it
        call ResolveExportFields(gcomp, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       ! Build the flat (file, time-record) list spanning config%dataFiles(:)
        call IndexDataFileTimes(rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       ! Read each configured variable's on-disk type/rank/packing metadata once, from first file
        call ReadVariableMetadata(rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        first_call = .false.
     end if
 
-    !------------------
-    ! Every call: pick a single data file/time record per config%timeSelection,
-    ! and (re-)read the configured variables only if that selection changed
-    !------------------
-
+    ! Query model clock and current time
     call NUOPC_ModelGet(gcomp, modelClock=clock, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     call ESMF_ClockGet(clock, currTime=currTime, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Logged every call (regardless of whether the selection changes) so the
-    ! run phase's actual calling cadence can be confirmed against the
-    ! configured coupling interval, e.g. via:
-    !   grep 'geogate_phases_hydro_run) currTime=' PET0000.ESMF_LogFile
+    ! Debug logging of current time
     call ESMF_TimeGet(currTime, timeStringISOFrac=currTimeStr, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_LogWrite(subname//' currTime='//trim(currTimeStr), ESMF_LOGMSG_INFO)
 
-    ! lowerIndex==upperIndex for nearest/lower/upper (and for linear, on the
-    ! coincidental call where currTime exactly matches a record's own valid
-    ! time -- e.g. whenever the coupling interval matches the data's own
-    ! time spacing, every call lands exactly on a record, so linear
-    ! degenerates to this same trivial case every time, by construction,
-    ! not as a special case that needs handling separately)
+    ! Find the lower/upper bracket indices for the current time to read the data file/s
     select case (trim(config%timeSelection))
     case ("lower")
        call FindLowerTime(currTime, lowerIndex, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
        upperIndex = lowerIndex
     case ("upper")
        call FindUpperTime(currTime, upperIndex, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
        lowerIndex = upperIndex
     case ("linear")
        call FindLowerTime(currTime, lowerIndex, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
        call FindUpperTime(currTime, upperIndex, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     case default
        call FindNearestTime(currTime, lowerIndex, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
        upperIndex = lowerIndex
     end select
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    ! Only re-read from disk when the bracket itself changes (expensive
-    ! PIO reads); re-blend every call regardless (cheap, in-memory), since
-    ! for "linear" the weight keeps changing even inside the same bracket
+    
+    ! Only re-read data from disk when the bracket (lower, upper) changes
     if (lowerIndex /= selectedLowerIndex .or. upperIndex /= selectedUpperIndex) then
        call ReadBracketData(lowerIndex, upperIndex, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -212,6 +193,7 @@ contains
        selectedUpperIndex = upperIndex
     end if
 
+    ! Blend the bracket data by currTime's fractional position in the bracket and update the export fields
     call BlendAndFillFields(lowerIndex, upperIndex, currTime, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -223,8 +205,7 @@ contains
 
   subroutine BuildLocStreamAndFields(rc)
 
-    ! Builds the DistGrid/LocStream from the coordinate file. Runs once,
-    ! from first_call.
+    ! Builds the DistGrid/LocStream from the coordinate file (see docs/source/hydro.rst).
 
     ! input/output variables
     integer, intent(out) :: rc
@@ -233,47 +214,58 @@ contains
     integer :: n
     integer, allocatable :: reorderIndexGlobal(:)
     integer, allocatable :: compdof(:)
+    type(ESMF_DistGrid) :: distgrid
+    real(ESMF_KIND_R8), allocatable, save :: lat(:), lon(:)
     character(len=*), parameter :: subname = trim(modName)//':(BuildLocStreamAndFields) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
-    call HydroReadReorderIndex(config%coordFile, config%idVarName, config%orderVarName, &
-       reorderIndexGlobal, nptsGlobal, rc)
+    ! Read the coordinate file to build the DistGrid/LocStream
+    call HydroReadReorderIndex(config%coordFile, config%idVarName, &
+       config%orderVarName, reorderIndexGlobal, nptsGlobal, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    distgridHydro = ESMF_DistGridCreate(minIndex=(/1/), maxIndex=(/nptsGlobal/), rc=rc)
+    ! Build the DistGrid and get the local count and sequence indices
+    distgrid = ESMF_DistGridCreate(minIndex=(/1/), maxIndex=(/nptsGlobal/), rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_DistGridGet(distgridHydro, localDe=0, elementCount=localCount, rc=rc)
+    ! Query the local count and sequence indices for this PET
+    call ESMF_DistGridGet(distgrid, localDe=0, elementCount=localCount, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     allocate(seqIndexList(localCount))
-    call ESMF_DistGridGet(distgridHydro, localDe=0, seqIndexList=seqIndexList, rc=rc)
+    
+    call ESMF_DistGridGet(distgrid, localDe=0, seqIndexList=seqIndexList, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! reorderIndex is 0-based; PIO's compdof is 1-based
+    ! The index is 0-based; PIO's compdof is 1-based
     allocate(compdof(localCount))
     do n = 1, localCount
        compdof(n) = reorderIndexGlobal(seqIndexList(n)) + 1
     end do
     deallocate(reorderIndexGlobal)
 
+    ! Read the coordinate file to get the lat/lon arrays and the local point IDs
     call PioReadCoords(config%coordFile, mpiComm, myPet, nptsGlobal, compdof, &
        config%idVarName, config%latVarName, config%lonVarName, lat, lon, pointIdLocal, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     deallocate(compdof)
 
-    locstreamHydro = ESMF_LocStreamCreate(distgrid=distgridHydro, coordSys=ESMF_COORDSYS_SPH_DEG, &
+    ! Create the LocStream and add the lat/lon keys
+    locstream = ESMF_LocStreamCreate(distgrid=distgrid, coordSys=ESMF_COORDSYS_SPH_DEG, &
        name="hydro", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_LocStreamAddKey(locstreamHydro, keyName="ESMF:Lat", farray=lat, &
-       datacopyflag=ESMF_DATACOPY_REFERENCE, keyUnits="Degrees", keyLongName="Latitude", rc=rc)
+    call ESMF_LocStreamAddKey(locstream, keyName="ESMF:Lat", farray=lat, &
+       datacopyflag=ESMF_DATACOPY_REFERENCE, keyUnits="Degrees", &
+       keyLongName="Latitude", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_LocStreamAddKey(locstreamHydro, keyName="ESMF:Lon", farray=lon, &
-       datacopyflag=ESMF_DATACOPY_REFERENCE, keyUnits="Degrees", keyLongName="Longitude", rc=rc)
+    call ESMF_LocStreamAddKey(locstream, keyName="ESMF:Lon", farray=lon, &
+       datacopyflag=ESMF_DATACOPY_REFERENCE, keyUnits="Degrees", &
+       keyLongName="Longitude", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
@@ -284,15 +276,7 @@ contains
 
   subroutine ResolveExportFields(gcomp, rc)
 
-    ! Matches each config%variableNames(n)/exportVarNames(n) against the
-    ! fields actually present in the export state (populated separately by
-    ! geogate_nuopc.F90's RealizeProvided, e.g. from an ESMF mesh file via
-    ! ExportType=locstream), and points varData(n)%p directly at each
-    ! matched field's own memory -- no separate buffer or copy. A variable
-    ! with no matching export field (wrong name, not on a LocStream) is
-    ! skipped, not an error: varData(n)%p gets a small fallback buffer
-    ! instead, so BlendAndFillFields still has somewhere to write it (see
-    ! docs/source/hydro.rst).
+    ! Matches each configured variable's export name against the export state and points varData(n)%p at it
 
     ! input/output variables
     type(ESMF_GridComp), intent(in) :: gcomp
@@ -304,16 +288,20 @@ contains
     type(ESMF_Field) :: field
     type(ESMF_GeomType_Flag) :: geomtype
     character(ESMF_MAXSTR), allocatable :: itemNameList(:)
+    logical, allocatable :: hasExportField(:)
     logical :: isFound
     character(len=*), parameter :: subname = trim(modName)//':(ResolveExportFields) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Allocate the varData array and a boolean array to track which export fields were found
     allocate(hasExportField(size(config%variableNames)))
     allocate(varData(size(config%variableNames)))
     hasExportField(:) = .false.
 
+    ! Query the export state from the model and get its item count
     call NUOPC_ModelGet(gcomp, exportState=exportState, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -321,11 +309,14 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (itemCount > 0) then
+       ! Get the list of item names in the export state
        allocate(itemNameList(itemCount))
        call ESMF_StateGet(exportState, itemNameList=itemNameList, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       ! Loop over each configured variable and check if its export name is present in the export state
        do n = 1, size(config%variableNames)
+          ! Check if the export field is present in the export state
           isFound = .false.
           do k = 1, itemCount
              if (trim(itemNameList(k)) == trim(config%exportVarNames(n))) then
@@ -334,6 +325,7 @@ contains
              end if
           end do
 
+          ! Debug logging of export field presence
           if (.not. isFound) then
              call ESMF_LogWrite(trim(subname)//": WARNING export field '"// &
                 trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
@@ -342,9 +334,11 @@ contains
              cycle
           end if
 
+          ! Get the field from the export state
           call ESMF_StateGet(exportState, itemName=trim(config%exportVarNames(n)), field=field, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+          ! Check that the field is on a LocStream
           call ESMF_FieldGet(field, geomtype=geomtype, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -356,14 +350,11 @@ contains
              cycle
           end if
 
+          ! Get the field's data pointer and point varData(n)%p at it
           call ESMF_FieldGet(field, farrayptr=varData(n)%p, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Guard against a name/geomtype match whose LocStream has a
-          ! different point count/decomposition than hydro's own (e.g. an
-          ! unrelated mesh file) -- writing raw(:), sized for hydro's own
-          ! localCount, into varData(n)%p otherwise overruns its actual
-          ! allocation
+          ! Guard against a mismatched export LocStream size (see docs/source/hydro.rst: Limitations)
           if (size(varData(n)%p) /= localCount) then
              call ESMF_LogWrite(trim(subname)//": ERROR export field '"// &
                 trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
@@ -377,17 +368,19 @@ contains
           hasExportField(n) = .true.
        end do
 
+       ! Clean memory
        deallocate(itemNameList)
     else
+       ! Debug logging when the export state has no fields (e.g., a model with no export fields configured)
        call ESMF_LogWrite(trim(subname)//": export state has no fields -- hydro export disabled", &
           ESMF_LOGMSG_INFO)
     end if
 
-    ! Fallback buffer for any variable with no matching export field, so
-    ! BlendAndFillFields still has a place to write it
+    ! Clean memory
     do n = 1, size(config%variableNames)
        if (.not. hasExportField(n)) allocate(varData(n)%p(localCount))
     end do
+    deallocate(hasExportField)
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
@@ -409,7 +402,9 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Count the total number of time records across all configured data files
     totalEntries = 0
     do f = 1, size(config%dataFiles)
        call HydroReadFileTimes(config%dataFiles(f), config%timeVarName, fileTimes, ntimes, rc)
@@ -418,20 +413,27 @@ contains
        deallocate(fileTimes)
     end do
 
+    ! Allocate the flat (file, time-record) index arrays
     allocate(timeFileIndex(totalEntries))
     allocate(timeFrameIndex(totalEntries))
     allocate(timeValid(totalEntries))
 
+    ! Build the flat (file, time-record) index arrays
     k = 0
     do f = 1, size(config%dataFiles)
+       ! Read the time records from the current data file
        call HydroReadFileTimes(config%dataFiles(f), config%timeVarName, fileTimes, ntimes, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Fill the flat (file, time-record) index arrays for the current data file
        do t = 1, ntimes
           k = k + 1
           timeFileIndex(k) = f
           timeFrameIndex(k) = t
           timeValid(k) = fileTimes(t)
        end do
+
+       ! Clean memory
        deallocate(fileTimes)
     end do
 
@@ -443,8 +445,7 @@ contains
 
   subroutine ReadVariableMetadata(rc)
 
-    ! Reads each configured variable's on-disk type/rank/packing metadata
-    ! once, from config%dataFiles(1)
+    ! Reads each configured variable's on-disk type/rank/packing metadata once, from config%dataFiles(1)
 
     ! input/output variables
     integer, intent(out) :: rc
@@ -455,7 +456,9 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Allocate the per-variable metadata arrays
     allocate(varXtype(size(config%variableNames)))
     allocate(varNdims(size(config%variableNames)))
     allocate(varScaleFactor(size(config%variableNames)))
@@ -463,7 +466,9 @@ contains
     allocate(varHasFillValue(size(config%variableNames)))
     allocate(varFillValueRaw(size(config%variableNames)))
 
+    ! Loop over each configured variable and read its metadata from the first data file
     do n = 1, size(config%variableNames)
+       ! Read the variable's metadata from the first data file
        call HydroReadVarMeta(config%dataFiles(1), trim(config%variableNames(n)), &
           varXtype(n), varNdims(n), varScaleFactor(n), varAddOffset(n), &
           varHasFillValue(n), varFillValueRaw(n), rc)
@@ -478,7 +483,7 @@ contains
 
   subroutine FindNearestTime(currTime, nearestIndex, rc)
 
-    ! time_selection=nearest (see docs/source/hydro.rst: Runtime Configuration Options)
+    ! time_selection=nearest
 
     ! input/output variables
     type(ESMF_Time), intent(in) :: currTime
@@ -492,15 +497,19 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Initialize the nearest index and best difference to invalid values
     nearestIndex = -1
     bestDiffSeconds = -1.0d0
 
-    ! On an exact tie (currTime exactly midway between two entries), <=
-    ! favors the later entry (round-half-up) so the switch lands exactly on
-    ! the midpoint instead of one step after it (see docs/source/hydro.rst)
+    ! Loop over each valid time and find the index of the nearest time to currTime
     do k = 1, size(timeValid)
+       ! Compute the absolute difference in seconds between currTime and timeValid(k)
        call ESMF_TimeIntervalGet(currTime - timeValid(k), s_r8=diffSeconds, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Take the absolute value of the difference in seconds
        diffSeconds = abs(diffSeconds)
        if (nearestIndex == -1 .or. diffSeconds <= bestDiffSeconds) then
           nearestIndex = k
@@ -508,13 +517,15 @@ contains
        end if
     end do
 
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
   end subroutine FindNearestTime
 
   !-----------------------------------------------------------------------------
 
   subroutine FindLowerTime(currTime, lowerIndex, rc)
 
-    ! time_selection=lower (see docs/source/hydro.rst: Runtime Configuration Options)
+    ! time_selection=lower
 
     ! input/output variables
     type(ESMF_Time), intent(in) :: currTime
@@ -529,13 +540,21 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Initialize the lower index and best difference to invalid values
     lowerIndex = -1
     bestDiffSeconds = -1.0d0
 
+    ! Loop over each valid time and find the index of the largest time that is less than or equal to currTime
     do k = 1, size(timeValid)
+       ! Check if timeValid(k) is less than or equal to currTime
        if (timeValid(k) <= currTime) then
+          ! Compute the difference in seconds between currTime and timeValid(k)
           call ESMF_TimeIntervalGet(currTime - timeValid(k), s_r8=diffSeconds, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Update the lower index if this is the first valid time or if the difference is smaller than the best difference found so far
           if (lowerIndex == -1 .or. diffSeconds < bestDiffSeconds) then
              lowerIndex = k
              bestDiffSeconds = diffSeconds
@@ -543,9 +562,13 @@ contains
        end if
     end do
 
+    ! If no valid time was found that is less than or equal to currTime, log an error and return failure
     if (lowerIndex == -1) then
+       ! Query the current time as a string for logging
        call ESMF_TimeGet(currTime, timeStringISOFrac=currTimeStr, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Log an error message indicating that the current time is before every configured data_files entry
        call ESMF_LogWrite(trim(subname)//': ERROR current time '//trim(currTimeStr)// &
           ' is before every configured data_files entry (time_selection=lower does not extrapolate)', &
           ESMF_LOGMSG_ERROR)
@@ -553,14 +576,15 @@ contains
        return
     end if
 
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
   end subroutine FindLowerTime
 
   !-----------------------------------------------------------------------------
 
   subroutine FindUpperTime(currTime, upperIndex, rc)
 
-    ! time_selection=upper, the mirror image of FindLowerTime (see
-    ! docs/source/hydro.rst: Runtime Configuration Options)
+    ! time_selection=upper
 
     ! input/output variables
     type(ESMF_Time), intent(in) :: currTime
@@ -575,13 +599,21 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Initialize the upper index and best difference to invalid values
     upperIndex = -1
     bestDiffSeconds = -1.0d0
 
+    ! Loop over each valid time and find the index of the smallest time that is greater than or equal to currTime
     do k = 1, size(timeValid)
+       ! Check if timeValid(k) is greater than or equal to currTime
        if (timeValid(k) >= currTime) then
+          ! Compute the difference in seconds between timeValid(k) and currTime
           call ESMF_TimeIntervalGet(timeValid(k) - currTime, s_r8=diffSeconds, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Update the upper index if this is the first valid time or if the difference is smaller than the best difference found so far
           if (upperIndex == -1 .or. diffSeconds < bestDiffSeconds) then
              upperIndex = k
              bestDiffSeconds = diffSeconds
@@ -589,9 +621,13 @@ contains
        end if
     end do
 
+    ! If no valid time was found that is greater than or equal to currTime, log an error and return failure
     if (upperIndex == -1) then
+       ! Query the current time as a string for logging
        call ESMF_TimeGet(currTime, timeStringISOFrac=currTimeStr, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Log an error message indicating that the current time is after every configured data_files entry
        call ESMF_LogWrite(trim(subname)//': ERROR current time '//trim(currTimeStr)// &
           ' is after every configured data_files entry (time_selection=upper does not extrapolate)', &
           ESMF_LOGMSG_ERROR)
@@ -599,18 +635,15 @@ contains
        return
     end if
 
+   call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
   end subroutine FindUpperTime
 
   !-----------------------------------------------------------------------------
 
   subroutine ReadBracketData(lowerIndex, upperIndex, rc)
 
-    ! Reads every configured variable's RAW (pre-unpack) data for the
-    ! lower/upper time-index bracket into the cached rawLower/rawUpper
-    ! arrays, only ever called when the bracket itself changes (see
-    ! geogate_phases_hydro_run) -- BlendAndFillFields re-blends this cached
-    ! data every call without touching disk again (see
-    ! docs/source/hydro.rst: Data Ingest).
+    ! Reads raw bracket data into rawLower/rawUpper, only when the bracket changes
 
     ! input/output variables
     integer, intent(in) :: lowerIndex, upperIndex
@@ -625,44 +658,67 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Allocate the rawLower/rawUpper arrays if they are not already allocated
     nVars = size(config%variableNames)
     if (.not. allocated(rawLower)) then
        allocate(rawLower(localCount, nVars))
        allocate(rawUpper(localCount, nVars))
     end if
 
+    ! Lower-bracket file and time record
     lowerFile = config%dataFiles(timeFileIndex(lowerIndex))
+
+    ! Loop over each configured variable and read its data from the lower-bracket file and time record
     do n = 1, nVars
+       ! Read the variable's data from the lower-bracket file and time record
        call PioReadVariable(lowerFile, mpiComm, myPet, nptsGlobal, seqIndexList, &
           trim(config%variableNames(n)), varXtype(n), varNdims(n), timeFrameIndex(lowerIndex), raw, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Store the raw data in the rawLower array
        rawLower(:,n) = raw(:)
+
+       ! Clean memory
        deallocate(raw)
     end do
 
+    ! Debug logging of lower-bracket read
     write(message, fmt='(A,I4,A,I8,A,I8,A)') trim(subname)//': PET ', myPet, &
        ' read lower-bracket data from '//trim(lowerFile)//' record ', timeFrameIndex(lowerIndex), &
        ' (time index ', lowerIndex, ')'
     call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
 
+    ! Check if the upper index is the same as the lower index; if so, copy rawLower to rawUpper
     if (upperIndex == lowerIndex) then
        rawUpper = rawLower
     else
+       ! Upper-bracket file and time record
        upperFile = config%dataFiles(timeFileIndex(upperIndex))
+
+       ! Loop over each configured variable and read its data from the upper-bracket file and time record
        do n = 1, nVars
+          ! Read the variable's data from the upper-bracket file and time record
           call PioReadVariable(upperFile, mpiComm, myPet, nptsGlobal, seqIndexList, &
              trim(config%variableNames(n)), varXtype(n), varNdims(n), timeFrameIndex(upperIndex), raw, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! Store the raw data in the rawUpper array
           rawUpper(:,n) = raw(:)
+
+          ! Clean memory
           deallocate(raw)
        end do
 
+       ! Debug logging of upper-bracket read
        write(message, fmt='(A,I4,A,I8,A,I8,A)') trim(subname)//': PET ', myPet, &
           ' read upper-bracket data from '//trim(upperFile)//' record ', timeFrameIndex(upperIndex), &
           ' (time index ', upperIndex, ')'
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
     end if
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine ReadBracketData
 
@@ -670,18 +726,7 @@ contains
 
   subroutine BlendAndFillFields(lowerIndex, upperIndex, currTime, rc)
 
-    ! Blends the cached rawLower/rawUpper bracket data (see ReadBracketData)
-    ! by the fractional position of currTime between the bracket's two
-    ! valid times, and writes the result into the matching field. Called
-    ! every run-phase invocation, even when the bracket itself hasn't
-    ! changed, since for time_selection=linear the blend weight keeps
-    ! changing continuously within the same bracket (see
-    ! docs/source/hydro.rst: Data Ingest).
-    !
-    ! A point is left at the fill sentinel if EITHER bracket endpoint is
-    ! itself a fill value at that point -- not only when both are -- since
-    ! blending a real value against the fill sentinel would otherwise
-    ! produce a physically meaningless result.
+    ! Blends rawLower/rawUpper by currTime's fractional position in the bracket and fills varData
 
     ! input/output variables
     integer, intent(in) :: lowerIndex, upperIndex
@@ -699,24 +744,32 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Compute the weight for linear interpolation based on currTime's position between the lower and upper valid times
     if (lowerIndex == upperIndex) then
        weight = 0.0d0
     else
+       ! Compute the time difference between currTime and the lower valid time, and between the upper and lower valid times
        diffNumer = currTime - timeValid(lowerIndex)
        diffDenom = timeValid(upperIndex) - timeValid(lowerIndex)
+
+       ! Get the time differences in seconds
        call ESMF_TimeIntervalGet(diffNumer, s_r8=numer, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
        call ESMF_TimeIntervalGet(diffDenom, s_r8=denom, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Compute the weight as the ratio of the time differences
        weight = numer/denom
     end if
 
+    ! Loop over each configured variable
     do n = 1, size(config%variableNames)
-       ! varData(n)%p either IS an export field's own memory (hasExportField(n)
-       ! .true.) or a small fallback buffer (see ResolveExportFields) -- either
-       ! way, writing here is the only fill/copy step needed
+       ! Blend the lower and upper raw data for variable n, applying scale factor and add offset
        varData(n)%p(:) = (rawLower(:,n) + weight*(rawUpper(:,n) - rawLower(:,n)))*varScaleFactor(n) + varAddOffset(n)
+
+       ! Fill any points that have the fill value in either the lower or upper raw data
        if (varHasFillValue(n)) then
           do m = 1, localCount
              if (rawLower(m,n) == varFillValueRaw(n) .or. rawUpper(m,n) == varFillValueRaw(n)) then
@@ -726,6 +779,7 @@ contains
        end if
     end do
 
+    ! Debug logging of the blending operation
     call ESMF_TimeGet(timeValid(lowerIndex), timeStringISOFrac=validTimeStr, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_TimeGet(currTime, timeStringISOFrac=currTimeStr, rc=rc)
@@ -735,6 +789,8 @@ contains
        ' blended fields, weight=', weight, ', lower_valid_time='//trim(validTimeStr)// &
        ', curr_time='//trim(currTimeStr)
     call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine BlendAndFillFields
 
