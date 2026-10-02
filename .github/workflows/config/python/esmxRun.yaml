@@ -75,8 +75,9 @@ COP1:
   attributes:
     Verbosity: low
     Diagnostic: 0
-    KeepFieldList: Sa_u10m:Sa_v10m:So_t
+    KeepFieldList: [Sa_u10m, Sa_v10m, So_t]
     PythonScripts: geogate_modify.py
+    ExportType: 'mesh'
     # DATM and DOCN both run on the same 1440x721 grid in this test, so
     # mesh_atm.nc is a valid export mesh for So_t too.
     ExportMeshFile: input/mesh_atm.nc
@@ -98,6 +99,6 @@ COP2:
   attributes:
     Verbosity: low
     Diagnostic: 0
-    KeepFieldList: Sa_u10m:Sa_v10m:Sa_wspd10m:So_t
+    KeepFieldList: [Sa_u10m, Sa_v10m, Sa_wspd10m, So_t]
     PythonScripts: geogate_plot.py
     <<: *anchor
