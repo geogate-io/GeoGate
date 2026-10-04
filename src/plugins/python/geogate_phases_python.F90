@@ -25,7 +25,7 @@ module geogate_phases_python
   use, intrinsic :: iso_c_binding, only : C_PTR
   use, intrinsic :: iso_c_binding, only : c_associated
 
-  use geogate_share, only: ChkErr, StringSplit, debugMode, FB_copy
+  use geogate_share, only: ChkErr, AttributeGetList, debugMode, FB_copy
   use geogate_types, only: IngestMeshData, meshType
   use geogate_internalstate, only: InternalState
   use geogate_python_interface, only: conduit_fort_to_py
@@ -140,11 +140,10 @@ contains
        end if
 
        ! Python script/s
-       call NUOPC_CompAttributeGet(gcomp, name="PythonScripts", value=cvalue, &
-         isPresent=isPresent, isSet=isSet, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       if (isPresent .and. isSet) then
-          scriptNames = StringSplit(trim(cvalue), ":")
+       scriptNames = AttributeGetList(gcomp, name="PythonScripts", rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       if (size(scriptNames, dim=1) > 0) then
           do n = 1, size(scriptNames, dim=1)
              write(message, fmt='(A,I1,A)') trim(subname)//": PythonScript (", n, ") = "//trim(scriptNames(n))
              call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
