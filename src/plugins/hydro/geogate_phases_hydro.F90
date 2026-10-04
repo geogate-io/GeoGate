@@ -3,7 +3,7 @@ module geogate_phases_hydro
   ! Hydro plugin: builds a parallel-decomposed LocStream and fills configured fields from time-varying data files
 
   use ESMF, only: ESMF_GridComp, ESMF_GridCompGet
-  use ESMF, only: ESMF_VM, ESMF_VMGet
+  use ESMF, only: ESMF_VM, ESMF_VMGet, ESMF_VMAllReduce
   use ESMF, only: ESMF_Clock, ESMF_ClockGet
   use ESMF, only: ESMF_Time, ESMF_TimeGet
   use ESMF, only: ESMF_TimeInterval, ESMF_TimeIntervalGet
@@ -11,9 +11,11 @@ module geogate_phases_hydro
   use ESMF, only: ESMF_DistGrid, ESMF_DistGridCreate, ESMF_DistGridGet
   use ESMF, only: ESMF_LocStream, ESMF_LocStreamCreate, ESMF_LocStreamAddKey
   use ESMF, only: ESMF_COORDSYS_SPH_DEG, ESMF_DATACOPY_REFERENCE
+  use ESMF, only: ESMF_Mesh, ESMF_MeshGet
   use ESMF, only: ESMF_Field, ESMF_FieldGet
   use ESMF, only: ESMF_State, ESMF_StateGet
-  use ESMF, only: ESMF_GeomType_Flag, ESMF_GEOMTYPE_LOCSTREAM
+  use ESMF, only: ESMF_GeomType_Flag, ESMF_GEOMTYPE_LOCSTREAM, ESMF_GEOMTYPE_MESH
+  use ESMF, only: ESMF_REDUCE_SUM
   use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_LOGMSG_WARNING, ESMF_LOGMSG_ERROR
   use ESMF, only: ESMF_SUCCESS, ESMF_FAILURE, ESMF_MAXSTR, ESMF_KIND_R8
 
@@ -46,9 +48,27 @@ module geogate_phases_hydro
   end type HydroFieldPtr
   type(HydroFieldPtr), allocatable, save :: varData(:)
 
-  ! Plugin configuration, LocStream, MPI communicator, and local decomposition info
+  ! export_ids/export_ids_file selection mask (see docs/source/hydro.rst:
+  ! Export Side): isExportSelected(m) is .true. if local point m's own id
+  ! (pointIdLocal(m)) is in config%exportIds. Left unallocated when
+  ! config%exportIds isn't set (export every point -- today's default).
+  logical, allocatable, save :: isExportSelected(:)
+
+  ! export_element_map_file element map (see docs/source/hydro.rst: Export Side):
+  ! mapLocalHydroIndex(k)/mapLocalExportIndex(k) are this PET's own local
+  ! array position for config%exportElementMapIds(k)/exportElementMapElements(k)
+  ! (0 if not locally owned); exportElementData(n)%p is the matched export
+  ! Mesh field's own farrayptr, separate from varData(n)%p (hydro's own
+  ! buffer) since the two geometries/decompositions differ entirely.
+  integer, save :: mapCount = 0
+  integer, allocatable, save :: mapLocalHydroIndex(:), mapLocalExportIndex(:)
+  type(HydroFieldPtr), allocatable, save :: exportElementData(:)
+  logical, allocatable, save :: hasExportElementField(:)
+
+  ! Plugin configuration, LocStream, VM, MPI communicator, and local decomposition info
   type(HydroConfigType), save :: config
   type(ESMF_LocStream), save :: locstream
+  type(ESMF_VM), save :: vm
   integer, save :: mpiComm, myPet, localCount, nptsGlobal
 
   ! Flat (global) index of the local points in the global coordinate file, and their local IDs
@@ -91,7 +111,6 @@ contains
     character(ESMF_MAXSTR) :: cvalue
     character(ESMF_MAXSTR) :: message
     character(ESMF_MAXSTR) :: hydroConfigFile
-    type(ESMF_VM) :: vm
     integer :: petCount
     integer :: lowerIndex, upperIndex
     type(ESMF_Clock) :: clock
@@ -197,6 +216,13 @@ contains
     call BlendAndFillFields(lowerIndex, upperIndex, currTime, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! export_element_map_file: push data to the matched export Mesh fields
+    ! (see docs/source/hydro.rst: Export Side)
+    if (allocated(config%exportElementMapIds)) then
+       call ApplyExportElementMap(rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_hydro_run
@@ -296,6 +322,25 @@ contains
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! export_element_map_file: the export geometry is a completely
+    ! different mesh/decomposition than hydro's own, so varData(n)%p
+    ! always stays hydro's own private buffer here -- a separate
+    ! subroutine resolves the matched export Mesh fields and
+    ! per-point/per-element local ownership (see docs/source/hydro.rst:
+    ! Export Side)
+    if (allocated(config%exportElementMapIds)) then
+       allocate(varData(size(config%variableNames)))
+       do n = 1, size(config%variableNames)
+          allocate(varData(n)%p(localCount))
+       end do
+
+       call BuildExportElementMapFields(gcomp, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+       return
+    end if
+
     ! Allocate the varData array and a boolean array to track which export fields were found
     allocate(hasExportField(size(config%variableNames)))
     allocate(varData(size(config%variableNames)))
@@ -342,6 +387,7 @@ contains
           call ESMF_FieldGet(field, geomtype=geomtype, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+          ! Check that the field is on a LocStream
           if (.not. (geomtype == ESMF_GEOMTYPE_LOCSTREAM)) then
              call ESMF_LogWrite(trim(subname)//": WARNING export field '"// &
                 trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
@@ -382,9 +428,328 @@ contains
     end do
     deallocate(hasExportField)
 
+    ! export_ids/export_ids_file: build the per-point selection mask that
+    ! BlendAndFillFields uses to leave every non-selected point at the
+    ! fill sentinel
+    if (allocated(config%exportIds)) then
+       call BuildExportSelectionMask(rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine ResolveExportFields
+
+  !-----------------------------------------------------------------------------
+
+  subroutine BuildExportSelectionMask(rc)
+
+    ! Builds isExportSelected(:) (export only a subset of flow ids -- see
+    ! docs/source/hydro.rst: Export Side). A purely local, per-PET check:
+    ! no redistribution across PETs is needed, since this still exports
+    ! onto the exact same LocStream/decomposition as coord_file (already a
+    ! requirement for any export) -- only a subset of its points actually
+    ! get filled, the rest are left at the fill sentinel by BlendAndFillFields.
+
+    ! input/output variables
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer, allocatable :: sortedIds(:)
+    integer :: m
+    character(len=*), parameter :: subname = trim(modName)//':(BuildExportSelectionMask) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    allocate(isExportSelected(localCount))
+
+    ! Sort a copy of config%exportIds once so each local point's id can be
+    ! checked via binary search rather than a linear scan
+    sortedIds = config%exportIds
+    call SortInt(sortedIds)
+
+    ! Check each local point's id against the sorted export ids and set the selection mask
+    do m = 1, localCount
+       isExportSelected(m) = IsInSortedInt(pointIdLocal(m), sortedIds)
+    end do
+
+    ! Clean memory
+    deallocate(sortedIds)
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine BuildExportSelectionMask
+
+  !-----------------------------------------------------------------------------
+
+  subroutine SortInt(values)
+
+    ! Simple in-place insertion sort (config%exportIds is expected to be a
+    ! modest-sized subset, not the full domain, so O(n^2) is fine -- same
+    ! complexity tradeoff already accepted by CheckNoDuplicates in
+    ! geogate_hydro_config.F90)
+
+    ! input/output variables
+    integer, intent(inout) :: values(:)
+
+    ! local variables
+    integer :: i, j, key
+    !---------------------------------------------------------------------------
+
+    do i = 2, size(values)
+       key = values(i)
+       j = i - 1
+       do while (j >= 1)
+          if (values(j) <= key) exit
+          values(j+1) = values(j)
+          j = j - 1
+       end do
+       values(j+1) = key
+    end do
+
+  end subroutine SortInt
+
+  !-----------------------------------------------------------------------------
+
+  logical function IsInSortedInt(target, sortedValues) result(found)
+
+    ! Binary search for target in sortedValues (ascending)
+
+    ! input/output variables
+    integer, intent(in) :: target
+    integer, intent(in) :: sortedValues(:)
+
+    ! local variables
+    integer :: lo, hi, mid
+    !---------------------------------------------------------------------------
+
+    found = .false.
+    lo = 1
+    hi = size(sortedValues)
+    do while (lo <= hi)
+       mid = (lo + hi) / 2
+       if (sortedValues(mid) == target) then
+          found = .true.
+          return
+       else if (sortedValues(mid) < target) then
+          lo = mid + 1
+       else
+          hi = mid - 1
+       end if
+    end do
+
+  end function IsInSortedInt
+
+  !-----------------------------------------------------------------------------
+
+  subroutine BuildExportElementMapFields(gcomp, rc)
+
+    ! export_element_map_file: resolves each configured variable's matched
+    ! export Mesh field (if any, by name) and this PET's own local array
+    ! position (if any) for each map entry's flow id (hydro side) and
+    ! target element (export side) -- ApplyExportElementMap uses these
+    ! every run-phase call to push data across, since the two
+    ! geometries/decompositions differ entirely (see docs/source/hydro.rst:
+    ! Export Side).
+
+    ! input/output variables
+    type(ESMF_GridComp), intent(in) :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: n, k, m, itemCount
+    integer :: localExportCount
+    type(ESMF_State) :: exportState
+    type(ESMF_Field) :: field
+    type(ESMF_GeomType_Flag) :: geomtype
+    type(ESMF_Mesh) :: fieldMesh
+    type(ESMF_DistGrid) :: fieldDistgrid
+    integer, allocatable :: exportSeqIndexList(:)
+    character(ESMF_MAXSTR), allocatable :: itemNameList(:)
+    logical :: isFound
+    character(len=*), parameter :: subname = trim(modName)//':(BuildExportElementMapFields) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Allocate the mapLocalHydroIndex/mapLocalExportIndex arrays and initialize to 0 (not locally owned)
+    mapCount = size(config%exportElementMapIds)
+    allocate(mapLocalHydroIndex(mapCount))
+    allocate(mapLocalExportIndex(mapCount))
+    mapLocalHydroIndex(:) = 0
+    mapLocalExportIndex(:) = 0
+
+    ! Hydro-side ownership: which local point (if any) owns each map
+    ! entry's flow id -- a plain linear scan, since the map is expected to
+    ! be a small subset
+    do k = 1, mapCount
+       do m = 1, localCount
+          if (pointIdLocal(m) == config%exportElementMapIds(k)) then
+             mapLocalHydroIndex(k) = m
+             exit
+          end if
+       end do
+    end do
+
+    ! Allocate the exportElementData array and a boolean array to track which export fields were found
+    allocate(hasExportElementField(size(config%variableNames)))
+    allocate(exportElementData(size(config%variableNames)))
+    hasExportElementField(:) = .false.
+
+   ! Query the export state from the model and get its item count
+    call NUOPC_ModelGet(gcomp, exportState=exportState, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_StateGet(exportState, itemCount=itemCount, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Debug logging when the export state has no fields (e.g., a model with no export fields configured)
+    if (itemCount == 0) then
+       call ESMF_LogWrite(trim(subname)//": export state has no fields -- hydro export disabled", &
+          ESMF_LOGMSG_INFO)
+       return
+    end if
+
+    ! Get the list of item names in the export state
+    allocate(itemNameList(itemCount))
+    call ESMF_StateGet(exportState, itemNameList=itemNameList, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Loop over each configured variable and check if its export name is present in the export state
+    do n = 1, size(config%variableNames)
+       ! Check if the export field is present in the export state
+       isFound = .false.
+       do k = 1, itemCount
+          if (trim(itemNameList(k)) == trim(config%exportVarNames(n))) then
+             isFound = .true.
+             exit
+          end if
+       end do
+
+       ! Debug logging of export field presence
+       if (.not. isFound) then
+          call ESMF_LogWrite(trim(subname)//": WARNING export field '"// &
+             trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
+             trim(config%variableNames(n))//"') not found in export state -- skipping", &
+             ESMF_LOGMSG_WARNING)
+          cycle
+       end if
+
+       ! Get the field from the export state
+       call ESMF_StateGet(exportState, itemName=trim(config%exportVarNames(n)), field=field, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Check that the field is on a Mesh
+       call ESMF_FieldGet(field, geomtype=geomtype, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       if (.not. (geomtype == ESMF_GEOMTYPE_MESH)) then
+          call ESMF_LogWrite(trim(subname)//": WARNING export field '"// &
+             trim(config%exportVarNames(n))//"' (mapped from data variable '"// &
+             trim(config%variableNames(n))//"') is not on a Mesh -- skipping", &
+             ESMF_LOGMSG_WARNING)
+          cycle
+       end if
+
+       ! Get the field's Mesh and DistGrid, and query the local element count and sequence indices for this PET
+       call ESMF_FieldGet(field, farrayptr=exportElementData(n)%p, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_FieldGet(field, mesh=fieldMesh, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_MeshGet(fieldMesh, elementDistgrid=fieldDistgrid, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_DistGridGet(fieldDistgrid, localDe=0, elementCount=localExportCount, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Get the local sequence indices for this PET's export elements and build the mapLocalExportIndex array
+       if (allocated(exportSeqIndexList)) deallocate(exportSeqIndexList)
+       allocate(exportSeqIndexList(localExportCount))
+       call ESMF_DistGridGet(fieldDistgrid, localDe=0, seqIndexList=exportSeqIndexList, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       ! Export-side ownership: which local export-field position (if any)
+       ! owns each map entry's target element. Every configured variable
+       ! shares the same export geometry (one shared Mesh built by
+       ! geogate_nuopc.F90's RealizeProvided), so this is recomputed
+       ! identically each iteration -- harmless, and simpler than caching
+       do k = 1, mapCount
+          do m = 1, localExportCount
+             if (exportSeqIndexList(m) == config%exportElementMapElements(k)) then
+                mapLocalExportIndex(k) = m
+                exit
+             end if
+          end do
+       end do
+
+       hasExportElementField(n) = .true.
+    end do
+
+    ! Clean memory
+    deallocate(itemNameList)
+    if (allocated(exportSeqIndexList)) deallocate(exportSeqIndexList)
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine BuildExportElementMapFields
+
+  !-----------------------------------------------------------------------------
+
+  subroutine ApplyExportElementMap(rc)
+
+    ! export_element_map_file: pushes data to the matched export Mesh
+    ! fields. Each PET contributes its own
+    ! locally-owned values (zero elsewhere) into a small per-map-entry
+    ! buffer; ESMF_VMAllReduce(sum) combines them across this component's
+    ! own PETs -- exact, not approximate, since exactly one PET owns each
+    ! map entry's flow id (duplicates are rejected at config-read time), so
+    ! every non-owner's zero contribution cannot corrupt the sum. Each PET
+    ! then writes its own locally-owned portion of the combined result
+    ! straight into the matched export field (see docs/source/hydro.rst:
+    ! Export Side).
+
+    ! input/output variables
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: n, k
+    real(ESMF_KIND_R8), allocatable :: contrib(:), combined(:)
+    character(len=*), parameter :: subname = trim(modName)//':(ApplyExportElementMap) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    allocate(contrib(mapCount), combined(mapCount))
+
+    do n = 1, size(config%variableNames)
+       if (.not. hasExportElementField(n)) cycle
+
+       contrib(:) = 0.0d0
+       do k = 1, mapCount
+          if (mapLocalHydroIndex(k) > 0) contrib(k) = varData(n)%p(mapLocalHydroIndex(k))
+       end do
+
+       call ESMF_VMAllReduce(vm, sendData=contrib, recvData=combined, count=mapCount, &
+          reduceflag=ESMF_REDUCE_SUM, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) exit
+
+       do k = 1, mapCount
+          if (mapLocalExportIndex(k) > 0) exportElementData(n)%p(mapLocalExportIndex(k)) = combined(k)
+       end do
+    end do
+
+    ! Clean memory (on every exit path, including an ESMF_VMAllReduce failure above)
+    deallocate(contrib, combined)
+    if (rc /= ESMF_SUCCESS) return
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine ApplyExportElementMap
 
   !-----------------------------------------------------------------------------
 
@@ -775,6 +1140,14 @@ contains
              if (rawLower(m,n) == varFillValueRaw(n) .or. rawUpper(m,n) == varFillValueRaw(n)) then
                 varData(n)%p(m) = fillValue
              end if
+          end do
+       end if
+
+       ! export_ids/export_ids_file: leave every non-selected point at the
+       ! fill sentinel (see docs/source/hydro.rst: Export Side)
+       if (allocated(isExportSelected)) then
+          do m = 1, localCount
+             if (.not. isExportSelected(m)) varData(n)%p(m) = fillValue
           end do
        end if
     end do

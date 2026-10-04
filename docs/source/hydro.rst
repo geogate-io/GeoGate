@@ -65,18 +65,128 @@ The plugin reads a small YAML configuration file (default path ``hydro_config.ya
   - ``upper``: the nearest upcoming record at-or-after the current time — the mirror image of ``lower`` (errors if the current time is after every configured record).
   - ``linear``: interpolates between the record at-or-before the current time (the ``lower`` bracket) and the one at-or-after it (the ``upper`` bracket), weighted by the current time's fractional position between the two records' own valid times. A point is left at GeoGate's fill sentinel if **either** bracket endpoint is itself a fill value at that point, not only when both are — blending a real value against the fill sentinel would otherwise produce a physically meaningless result. Whenever the current time exactly matches a record's own valid time (including, trivially, every call when the coupling interval matches the data's own time spacing), the ``lower`` and ``upper`` brackets resolve to that same record and the weight is exactly zero, so ``linear`` degenerates to the same result as ``nearest``/``lower``/``upper`` with no special-casing needed. Like ``lower``/``upper``, it does not extrapolate past either end of the configured records.
 - **variables**: list of variable names to create on the hydro LocStream and read from ``data_files``. Each entry may optionally map a data-file variable name to a different export-state field name as ``dataVarName:exportName`` (a coupled system's own field-dictionary naming convention does not always match the data file's variable names, e.g. NUOPC's ``Fall_roff``/``Fall_soff`` standard names above vs. NWM's own ``streamflow``/``velocity``). A bare name with no colon exports under that same name. See "Export Side" below for how each name is actually matched against the export state.
+- **export_ids** / **export_ids_file** (optional): export only a subset of flow ids rather than every point. Mutually exclusive with each other and with ``export_element_map_file``. See "Export Side" below.
+- **export_element_map_file** (optional): export onto a different mesh entirely (e.g. an ocean model's grid), filling only explicitly mapped elements. Mutually exclusive with ``export_ids``/``export_ids_file``. See "Export Side" below.
 
 =====================
 Export Side
 =====================
 
-Setting the generic ``ExportType``/``ExportMeshFile``/``ExportFields`` NUOPC component attributes (see the :doc:`GeoGate Overview <overview>`) causes ``geogate_nuopc.F90`` to build a shared geometry (``mesh`` or ``locstream``) from ``ExportMeshFile`` and create one field per ``ExportFields`` entry on it, filled with GeoGate's fill sentinel as a placeholder. The Hydro plugin does not create these fields itself — instead, once per run (``ResolveExportFields``, called once at startup), it looks up each configured variable's ``exportName`` (the ``dataVarName:exportName`` mapping above) against the fields actually present in the export state:
+Setting the generic ``ExportType``/``ExportMeshFile``/``ExportFields`` NUOPC component attributes (see the :doc:`GeoGate Overview <overview>`) causes ``geogate_nuopc.F90`` to build a shared geometry (``mesh`` or ``locstream``) from ``ExportMeshFile`` and create one field per ``ExportFields`` entry on it, filled with GeoGate's fill sentinel as a placeholder. The Hydro plugin does not create these fields itself — instead, once per run (``ResolveExportFields``, called once at startup), it looks up each configured variable's ``exportName`` (the ``dataVarName:exportName`` mapping above) against the fields actually present in the export state, then fills them every call according to one of three modes:
+
+Mode 1: export every point
+--------------------------
+
+**Every point in** ``coord_file`` **is exported, unchanged.** The default, with none of the options below set. Requires ``ExportMeshFile`` to describe the *same* points, in the *same* order, as ``coord_file`` — e.g. for the NWM RouteLink case, a LocStream mesh file built with the same ``ascendingIndex`` order as ``order_variable`` above (see ``hydro/tools/mesh_nwm.py``, which builds exactly this kind of file).
+
+.. code-block:: yaml
+
+  hydro:
+    coord_file: "v3.0_par/RouteLink_CONUS.nc"
+    id_variable: "link"
+    lat_variable: "lat"
+    lon_variable: "lon"
+    order_variable: "ascendingIndex"
+    data_files:
+      - "nwm.t00z.medium_range.channel_rt_1.f001.conus.nc"
+    time_variable: "time"
+    time_selection: linear
+    variables:
+      - streamflow:Fall_roff
+      - velocity:Fall_soff
+
+Paired with, in ``ufs.configure``:
+
+.. code-block:: text
+
+  ExportType = 'locstream'
+  ExportMeshFile = nwm_ESMF.nc
+  ExportFields = Fall_roff:Fall_soff
 
 - A variable whose ``exportName`` isn't present in the export state, or whose matched field isn't on a LocStream, is skipped with a warning — it's still read from ``data_files`` and available for ``FBExp``-style internal access, just not exported.
 - A variable whose ``exportName`` **is** found gets ``varData(n)%p`` pointed directly at that field's own memory (``ESMF_FieldGet(..., farrayptr=...)``) — every later read/blend step (see "Data Ingest" below) writes straight into the export field, with no separate copy.
-- If a matched field's local size doesn't match the Hydro plugin's own decomposition (e.g. ``ExportMeshFile`` has a different point count or order than ``coord_file``), this is a hard configuration error (``rc=ESMF_FAILURE``), not a silent skip — writing a differently-sized buffer into the wrong-sized field's memory would otherwise silently corrupt it.
+- If a matched field's local size doesn't match the Hydro plugin's own decomposition, this is a hard configuration error (``rc=ESMF_FAILURE``), not a silent skip — writing a differently-sized buffer into the wrong-sized field's memory would otherwise silently corrupt it.
 
-This requires ``ExportMeshFile`` to describe the *same* points, in the *same* order, as ``coord_file`` — e.g. for the NWM RouteLink case, a LocStream mesh file built with the same ``ascendingIndex`` order as ``order_variable`` above (see ``hydro/tools/mesh_nwm.py``, which builds exactly this kind of file).
+Mode 2: export a subset of points
+----------------------------------
+
+**Only a chosen subset of flow ids is exported; every other point is left at the fill sentinel.** Set ``export_ids`` (inline YAML list) or ``export_ids_file`` (external file, one flow id per line — blank lines and ``#`` comments are skipped; mutually exclusive with ``export_ids``), still onto the *same* full LocStream as mode 1 (``ExportMeshFile`` does **not** need to be a separate, smaller file — the full NWM LocStream can still be used; it's only worth building a smaller file if the receiving component's own memory/I/O footprint needs to shrink too):
+
+.. code-block:: yaml
+
+  hydro:
+    coord_file: "v3.0_par/RouteLink_CONUS.nc"
+    id_variable: "link"
+    lat_variable: "lat"
+    lon_variable: "lon"
+    order_variable: "ascendingIndex"
+    data_files:
+      - "nwm.t00z.medium_range.channel_rt_1.f001.conus.nc"
+    time_variable: "time"
+    time_selection: linear
+    variables:
+      - streamflow:Fall_roff
+      - velocity:Fall_soff
+    export_ids: [6635572, 166764152, 15569905]
+    # or: export_ids_file: "export_ids.txt"
+
+Paired with the same ``ufs.configure`` as mode 1 (``ExportType = 'locstream'``, ``ExportMeshFile = nwm_ESMF.nc`` — unchanged, since the export geometry is still the full LocStream).
+
+Implementation: since the export geometry is required to be identical to hydro's own decomposition already (mode 1's own requirement), this needs no data redistribution at all — just a local, per-PET boolean mask (``isExportSelected(:)``, built once from ``pointIdLocal(:)`` + ``config%exportIds`` via a sort and binary search). ``BlendAndFillFields`` leaves every non-selected point at the fill sentinel, the same way it already handles a genuinely missing/fill source value.
+
+Mode 3: map flow ids onto an external mesh
+--------------------------------------------
+
+**Export onto a completely different mesh** — e.g. an ocean model's own grid — **filling only explicitly mapped elements**, with every other element left at the fill sentinel. Set ``export_element_map_file`` (external file, two columns per line — ``flow_id element_index``, whitespace-separated, ``#`` comments skipped; mutually exclusive with ``export_ids``/``export_ids_file``):
+
+.. code-block:: yaml
+
+  hydro:
+    coord_file: "v3.0_par/RouteLink_CONUS.nc"
+    id_variable: "link"
+    lat_variable: "lat"
+    lon_variable: "lon"
+    order_variable: "ascendingIndex"
+    data_files:
+      - "nwm.t00z.medium_range.channel_rt_1.f001.conus.nc"
+    time_variable: "time"
+    time_selection: linear
+    variables:
+      - streamflow:Fall_roff
+      - velocity:Fall_soff
+    export_element_map_file: "export_element_map.txt"
+
+``export_element_map_file`` content (this is also exactly the file used to validate this mode, mapping 4 real NWM flow ids to 4 element indices spanning each of 4 PETs' ranges in a 165,132-element test mesh):
+
+.. code-block:: text
+
+  # flow_id  ocean_element_index
+  166764152  1000
+  13196034   50000
+  15569905   100000
+  15569903   150000
+
+Paired with, in ``ufs.configure`` (note ``ExportType`` is ``'mesh'`` here, not ``'locstream'``, and ``ExportMeshFile`` is the target mesh itself — e.g. an ocean model's grid, not anything built from ``coord_file``):
+
+.. code-block:: text
+
+  ExportType = 'mesh'
+  ExportMeshFile = hgrid_ESMF.nc
+  ExportFields = Fall_roff:Fall_soff
+
+The IO plugin consuming this needs no changes, since it already geomtype-dispatches to ``FBWriteVTK`` for Mesh fields (see :doc:`IO plugin <io>`).
+
+.. important::
+  **How the two ids in the mapping are defined is worth being precise about, since they come from two different sources with two different meanings:**
+
+  - The **flow id** (left column) is the exact, real-world id from ``id_variable`` (e.g. RouteLink's ``link``, equal to ``channel_rt``'s ``feature_id``) — the same value used everywhere else in this plugin (``pointIdLocal``, ``export_ids``, etc.), matched directly against the data files' own ids.
+  - The **ocean element index** (right column) is **not** a semantic id the ocean model assigns internally — it's the element's 1-based row position in the target mesh file's own on-disk ``elementConn``/``numElementConn`` arrays. This was confirmed empirically (standalone test, ``/glade/derecho/scratch/turuncu/test_mesh_seqindex/``): a file-loaded ``ESMF_Mesh``'s element ``DistGrid`` sequence index is exactly that on-disk row position, split into contiguous per-PET blocks — and an ESMFMESH file has no separate element-id field at all, so row position is the *only* identity it has to give.
+
+  In other words, "element 1000" means "the 1000th element as written into the mesh file," not necessarily any number the ocean model itself uses to refer to that element elsewhere. This is workable as long as whatever generates the ocean mesh file preserves a known, stable element ordering — but it is a positional handle, not a semantic one, and is worth revisiting if a more robust way to identify target elements (e.g. the ocean model's own native element ids, if its mesh-generation tooling can emit or cross-reference them) becomes available.
+
+Implementation: since the target mesh is a genuinely different geometry/decomposition than hydro's own, a flow id's value may need to move to a different PET than the one that computed it. Rather than ``ESMF_FieldRedistStore``/``ESMF_FieldRedist``, this uses a lighter mechanism suited to the typically-small mapped set: every PET contributes its own locally-owned values (zero everywhere else) into a small per-map-entry buffer, ``ESMF_VMAllReduce(reduceflag=ESMF_REDUCE_SUM)`` combines them across this component's own PETs, and each PET then writes its own locally-owned portion of the combined result directly into the matched export field's ``farrayptr``. The sum is exact, not approximate: duplicate flow ids are rejected at config-read time, so exactly one PET owns each map entry, and every non-owner's zero contribution cannot corrupt the sum regardless of what the real value is (including a legitimate zero).
+
+Verified end-to-end against a real ocean mesh (``hgrid_ESMF.nc``, 165,132 elements): mapping 4 real flow ids (with known non-fill streamflow) to 4 element indices spanning each of 4 PETs' ranges reproduced the correct value at exactly those 4 elements (confirmed via the VTK output's own ``_ELEM_NUM`` ground-truth labeling) across every coupling step of a 3-hour run, matching an independently-recomputed ``linear`` time interpolation from the real NWM data files.
 
 =====================================
 Parallel Decomposition Implementation
@@ -130,7 +240,8 @@ Limitations
 ===========
 
 - Data files are assumed to already share the coordinate file's point ordering (no reordering is applied to them), and to share identical variable packing/type/rank across all configured ``data_files``.
-- ``ExportMeshFile`` must describe the same points, in the same order, as ``coord_file`` (see "Export Side" above) — a mismatched point count is caught as a hard error, but a mismatched *order* with the same count is not currently detected and would silently export values against the wrong points.
+- For export modes 1/2 (full or subset export, no ``export_element_map_file``), ``ExportMeshFile`` must describe the same points, in the same order, as ``coord_file`` (see "Export Side" above) — a mismatched point count is caught as a hard error, but a mismatched *order* with the same count is not currently detected and would silently export values against the wrong points.
+- For export mode 3 (``export_element_map_file``), the ocean element index is a positional handle (the target mesh's own on-disk element row), not a semantic id — see the note in "Export Side" above. A duplicate flow id or element index in the map is caught as a hard error, but nothing currently detects a flow id or element index that simply doesn't exist in ``coord_file``/``ExportMeshFile`` (it's silently never matched, leaving that map entry's target element at the fill sentinel forever).
 - ``linear`` does not extrapolate past either end of the configured records, the same as ``lower``/``upper``.
 - ``time_variable``'s calendar is hardcoded to Gregorian (``ESMF_CALKIND_GREGORIAN``) when parsing its CF ``units`` attribute — a data file's own CF ``calendar`` attribute (e.g. ``noleap``, ``360_day``, ``proleptic_gregorian``) is never read or honored. Fine for NWM's real-world files (standard Gregorian), but a data source using a non-Gregorian calendar would get incorrect dates. Only elapsed-time units (``seconds``/``minutes``/``hours``/``days``) are accepted in the first place — the genuinely calendar-ambiguous CF units ``months since``/``years since`` are rejected as an error, so leap years and month lengths are handled correctly for every *supported* case by ESMF's own calendar-aware ``ESMF_Time`` arithmetic, not by any custom logic in this plugin.
 - ``coord_file``'s ``lat_variable``/``lon_variable`` are assumed on-disk 4-byte floats, and ``id_variable`` a default (4-byte) integer, with **no runtime type check or dispatch** (``geogate_hydro_pio``: ``PioReadCoords`` hardcodes ``PIO_real``/``PIO_int`` unconditionally). This differs from ``data_files``' own variables, which *are* type-checked and dispatched at runtime (``NF90_INT``/``NF90_FLOAT``/``NF90_DOUBLE``, via ``HydroReadVarMeta``'s ``xtype``) — see "Packed/scaled variables" above. A coordinate file whose lat/lon are stored as doubles, or whose id variable is a different integer width, would be silently misread rather than erroring. Not yet hit in practice (NWM's RouteLink file matches these assumptions), but worth generalizing to match ``PioReadVariable``'s own dispatch pattern if a future data source needs it.
