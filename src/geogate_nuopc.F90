@@ -30,7 +30,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_DistGridGet, ESMF_DistGridConnection
   use ESMF, only: ESMF_FieldCreate, ESMF_StateIsCreated
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
-  use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT
+  use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT, ESMF_KIND_R8
   use ESMF, only: ESMF_FieldFill, ESMF_FILEFORMAT_ESMFMESH
 
   use NUOPC, only: NUOPC_CompDerive
@@ -645,6 +645,9 @@ contains
     type(InternalState) :: is_local
     character(len=ESMF_MAXSTR) :: mesh_file
     character(len=ESMF_MAXSTR) :: cvalue
+    logical :: elementMaskIsPresent
+    integer, allocatable :: elementMask(:)
+    real(ESMF_KIND_R8), pointer :: dataPtr(:)
     character(len=*), parameter :: subname = trim(modName)//':(RealizeProvided) '
     !---------------------------------------------------------------------------
 
@@ -695,9 +698,33 @@ contains
             meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Initialize field
-          call ESMF_FieldFill(meshField, dataFillScheme="const", const1=fillValue, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          ! Check field name
+          if (trim(exportFieldNameList(n)) == 'Sa_ofrac') then
+             ! Check if mesh has element mask
+             call ESMF_MeshGet(is_local%wrap%meshExp, elementMaskIsPresent=elementMaskIsPresent, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             if (elementMaskIsPresent) then
+                ! Query field pointer
+                call ESMF_FieldGet(meshField, farrayPtr=dataPtr, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Query mesh mask
+                call ESMF_MeshGet(is_local%wrap%meshExp, elementMask=elementMask, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Fill with actual mask data
+                dataPtr(:) = real(elementMask(:), ESMF_KIND_R8)
+             else
+                ! Fill with initial data
+                call ESMF_FieldFill(meshField, dataFillScheme="const", const1=1.0d0, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             end if
+          else
+             ! Fill with some unrealistic large data
+             call ESMF_FieldFill(meshField, dataFillScheme="const", const1=fillValue, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
 
           ! Realize field
           call NUOPC_Realize(is_local%wrap%NStateExp, field=meshField, rc=rc)
