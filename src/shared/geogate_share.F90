@@ -11,13 +11,14 @@ module geogate_share
   use ESMF, only: ESMF_Field, ESMF_FieldGet, ESMF_FieldCreate, ESMF_FieldFill
   use ESMF, only: ESMF_FieldBundle, ESMF_FieldBundleCreate, ESMF_FieldBundleAdd
   use ESMF, only: ESMF_AttributeGet, ESMF_Mesh, ESMF_MeshLoc
-  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_INDEX_DELOCAL, ESMF_MAXSTR, ESMF_KIND_R8
+  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_LOGMSG_WARNING, ESMF_INDEX_DELOCAL, ESMF_MAXSTR, ESMF_KIND_R8
   use ESMF, only: ESMF_GEOMTYPE_GRID, ESMF_GEOMTYPE_MESH, ESMF_TYPEKIND_R8
   use ESMF, only: ESMF_StateGet, ESMF_StateItem_Flag, ESMF_STATEITEM_STATE
-  use ESMF, only: ESMF_MeshLoc, ESMF_RouteHandle, ESMF_RouteHandleIsCreated
+  use ESMF, only: ESMF_MeshLoc, ESMF_RouteHandle, ESMF_RouteHandleIsCreated, ESMF_MeshGet
   use ESMF, only: ESMF_FieldBundleIsCreated, ESMF_FieldBundleGet
   use ESMF, only: ESMF_FieldBundleRegridStore, ESMF_FieldBundleRegrid
-  use ESMF, only: ESMF_REGRIDMETHOD_BILINEAR, ESMF_POLEMETHOD_ALLAVG, ESMF_UNMAPPEDACTION_IGNORE
+  use ESMF, only: ESMF_REGRIDMETHOD_BILINEAR, ESMF_REGRIDMETHOD_CONSERVE, ESMF_NORMTYPE_FRACAREA
+  use ESMF, only: ESMF_POLEMETHOD_ALLAVG, ESMF_UNMAPPEDACTION_IGNORE
   use ESMF, only: ESMF_REGION_SELECT, ESMF_TERMORDER_SRCSEQ
   use ESMF, only: ESMF_TraceRegionEnter, ESMF_TraceRegionExit
 
@@ -246,7 +247,7 @@ module geogate_share
 
   !-----------------------------------------------------------------------------
 
-  subroutine FB_copy(FBin, FBout, name, mesh, rh, rc)
+  subroutine FB_copy(FBin, FBout, name, mesh, rh, rc, srcMaskValue, dstMaskValue)
 
     ! input/output variables
     type(ESMF_FieldBundle), intent(in) :: FBin
@@ -255,13 +256,17 @@ module geogate_share
     type(ESMF_Mesh), intent(in) :: mesh
     type(ESMF_RouteHandle), intent(inout) :: rh
     integer, intent(out), optional :: rc
+    integer, intent(in), optional :: srcMaskValue, dstMaskValue  ! masked value per connection; omit to skip masking
 
     ! local variables
     integer :: n, fieldCount
     type(ESMF_MeshLoc) :: meshloc
     type(ESMF_Field) :: fldSrc, fldDst
+    type(ESMF_Mesh) :: srcMesh
     integer :: srcTermProcessing = 0
+    logical :: srcMaskIsPresent, dstMaskIsPresent
     character(ESMF_MAXSTR), pointer :: fieldNameList(:)
+    character(ESMF_MAXSTR) :: logmsg
     character(len=*), parameter :: subname = trim(modName)//':(FB_copy) '
     !---------------------------------------------------------------------------
 
@@ -312,9 +317,34 @@ module geogate_share
 
     ! Create routehandle for interpolation
     if (.not. ESMF_RouteHandleIsCreated(rh)) then
-       call ESMF_FieldBundleRegridStore(FBin, FBout, regridmethod=ESMF_REGRIDMETHOD_BILINEAR, &
-         polemethod=ESMF_POLEMETHOD_ALLAVG, srcTermProcessing=srcTermProcessing, &
-         ignoreDegenerate=.true., unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, routehandle=rh, rc=rc)
+       srcMaskIsPresent = .false.
+       dstMaskIsPresent = .false.
+       if (present(srcMaskValue) .and. present(dstMaskValue)) then
+          call ESMF_FieldGet(fldSrc, mesh=srcMesh, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_MeshGet(srcMesh, elementMaskIsPresent=srcMaskIsPresent, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+          call ESMF_MeshGet(mesh, elementMaskIsPresent=dstMaskIsPresent, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+       end if
+
+       if (srcMaskIsPresent .and. dstMaskIsPresent) then
+          ! Masked conservative regrid, mirrors CMEPS's own mapconsf (med_map_mod.F90)
+          write(logmsg, fmt='(A,I0,A,I0)') subname//' '//trim(name)//': masked conservative regrid, srcMask=', &
+            srcMaskValue, ' dstMask=', dstMaskValue
+          call ESMF_LogWrite(trim(logmsg), ESMF_LOGMSG_INFO)
+          call ESMF_FieldBundleRegridStore(FBin, FBout, regridmethod=ESMF_REGRIDMETHOD_CONSERVE, &
+            normType=ESMF_NORMTYPE_FRACAREA, srcMaskValues=(/srcMaskValue/), dstMaskValues=(/dstMaskValue/), &
+            srcTermProcessing=srcTermProcessing, ignoreDegenerate=.true., &
+            unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, routehandle=rh, rc=rc)
+       else
+          if (present(srcMaskValue) .and. present(dstMaskValue)) then
+             call ESMF_LogWrite(subname//' '//trim(name)//': mesh has no elementMask, using unmasked bilinear', ESMF_LOGMSG_WARNING)
+          end if
+          call ESMF_FieldBundleRegridStore(FBin, FBout, regridmethod=ESMF_REGRIDMETHOD_BILINEAR, &
+            polemethod=ESMF_POLEMETHOD_ALLAVG, srcTermProcessing=srcTermProcessing, &
+            ignoreDegenerate=.true., unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, routehandle=rh, rc=rc)
+       end if
        if (chkerr(rc,__LINE__,u_FILE_u)) return
     end if
 

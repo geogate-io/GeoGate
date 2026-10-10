@@ -191,9 +191,16 @@ contains
           ! Interpolate import fields to export mesh and add them to node
           if (remapImportFields) then
              ! Interpolate import fields to export mesh and create new FB
-             call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
-               'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
-               is_local%wrap%meshExp, is_local%wrap%RHImp2Exp(n), rc)
+             if (is_local%wrap%importMaskIsSet(n)) then
+                call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
+                  'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
+                  is_local%wrap%meshExp, is_local%wrap%RHImp2Exp(n), rc, &
+                  srcMaskValue=is_local%wrap%importSrcMaskValue(n), dstMaskValue=is_local%wrap%importDstMaskValue(n))
+             else
+                call FB_copy(is_local%wrap%FBImp(n), is_local%wrap%FBImpIntp(n), &
+                  'FBImpOnExp'//trim(is_local%wrap%compName(n)), &
+                  is_local%wrap%meshExp, is_local%wrap%RHImp2Exp(n), rc)
+             end if
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Load content of FB to Conduit node

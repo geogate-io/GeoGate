@@ -9,13 +9,13 @@ module geogate_internalstate
   use ESMF, only: ESMF_State, ESMF_StateGet, ESMF_StateItem_Flag
   use ESMF, only: ESMF_FieldBundle, ESMF_RouteHandle
   use ESMF, only: ESMF_UtilStringLowerCase, ESMF_LogWrite
-  use ESMF, only: ESMF_Mesh, ESMF_SUCCESS, ESMF_LOGMSG_INFO
+  use ESMF, only: ESMF_Mesh, ESMF_SUCCESS, ESMF_LOGMSG_INFO, ESMF_LOGMSG_ERROR, ESMF_LOGMSG_WARNING
   use ESMF, only: ESMF_STATEITEM_STATE, ESMF_MAXSTR
 
-  use NUOPC, only: NUOPC_GetAttribute
+  use NUOPC, only: NUOPC_GetAttribute, NUOPC_CompAttributeGet
   use NUOPC_Model, only: NUOPC_ModelGet
 
-  use geogate_share, only: ChkErr
+  use geogate_share, only: ChkErr, StringSplit
 
   implicit none
   private
@@ -35,6 +35,10 @@ module geogate_internalstate
      type(ESMF_FieldBundle) :: FBExp
      type(ESMF_Mesh) :: meshExp
      type(ESMF_RouteHandle), pointer :: RHImp2Exp(:)
+     ! Per-connection (compName(n)) land/ocean mask values for FB_copy's masked regrid, see ImportMaskValues
+     integer, allocatable :: importSrcMaskValue(:)
+     integer, allocatable :: importDstMaskValue(:)
+     logical, allocatable :: importMaskIsSet(:)
   end type InternalStateStruct
 
   !-----------------------------------------------------------------------------
@@ -65,15 +69,18 @@ module geogate_internalstate
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: i, j
+    integer :: i, j, m
     integer :: importItemCount, nestedStateCount
     type(InternalState) :: is_local
     type(ESMF_State) :: importState
     type(ESMF_State) :: importNestedState
     character(ESMF_MAXSTR), allocatable     :: importItemNameList(:)
-    type(ESMF_StateItem_Flag), allocatable  :: importItemTypeList(:)    
+    type(ESMF_StateItem_Flag), allocatable  :: importItemTypeList(:)
     character(ESMF_MAXSTR) :: message
     character(ESMF_MAXSTR) :: namespace
+    character(ESMF_MAXSTR) :: cvalue
+    character(ESMF_MAXSTR), allocatable :: maskPairList(:), maskKV(:)
+    logical :: isPresent, isSet, matched
     character(len=*), parameter :: subname = trim(modName)//':(InternalStateInit) '
     !---------------------------------------------------------------------------
 
@@ -130,6 +137,10 @@ module geogate_internalstate
        allocate(is_local%wrap%NStateImp(nestedStateCount))
        allocate(is_local%wrap%FBImpIntp(nestedStateCount))
        allocate(is_local%wrap%RHImp2Exp(nestedStateCount))
+       allocate(is_local%wrap%importSrcMaskValue(nestedStateCount))
+       allocate(is_local%wrap%importDstMaskValue(nestedStateCount))
+       allocate(is_local%wrap%importMaskIsSet(nestedStateCount))
+       is_local%wrap%importMaskIsSet(:) = .false.
     else
        is_local%wrap%numComp = 0
        call ESMF_LogWrite(trim(subname)//': There is no nested states or connection to the component!', ESMF_LOGMSG_INFO)
@@ -158,6 +169,37 @@ module geogate_internalstate
              j = j+1
           end if
        end do
+
+       ! Per-connection land/ocean mask values, format "namespace:srcMaskValue:dstMaskValue,..."
+       call NUOPC_CompAttributeGet(gcomp, name='ImportMaskValues', value=cvalue, &
+         isPresent=isPresent, isSet=isSet, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (isPresent .and. isSet) then
+          maskPairList = StringSplit(trim(cvalue), ",")
+          do i = 1, size(maskPairList, dim=1)
+             maskKV = StringSplit(trim(maskPairList(i)), ":")
+             if (size(maskKV, dim=1) /= 3) then
+                call ESMF_LogWrite(trim(subname)//': malformed ImportMaskValues entry: '//trim(maskPairList(i)), ESMF_LOGMSG_ERROR)
+                cycle
+             end if
+             matched = .false.
+             do m = 1, is_local%wrap%numComp
+                if (trim(ESMF_UtilStringLowerCase(trim(maskKV(1)))) == trim(is_local%wrap%compName(m))) then
+                   read(maskKV(2), *) is_local%wrap%importSrcMaskValue(m)
+                   read(maskKV(3), *) is_local%wrap%importDstMaskValue(m)
+                   is_local%wrap%importMaskIsSet(m) = .true.
+                   matched = .true.
+                   write(message, fmt='(A,I0,A,I0)') trim(subname)//': ImportMaskValues: '//trim(is_local%wrap%compName(m))// &
+                     ' src=', is_local%wrap%importSrcMaskValue(m), ' dst=', is_local%wrap%importDstMaskValue(m)
+                   call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+                end if
+             end do
+             ! Catches a typo'd/unconnected namespace in ImportMaskValues, which would otherwise fail silently
+             if (.not. matched) then
+                call ESMF_LogWrite(trim(subname)//': ImportMaskValues names an unconnected component: '//trim(maskKV(1)), ESMF_LOGMSG_WARNING)
+             end if
+          end do
+       end if
     end if
 
     !------------------
