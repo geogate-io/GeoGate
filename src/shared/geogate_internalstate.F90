@@ -35,7 +35,6 @@ module geogate_internalstate
      type(ESMF_FieldBundle) :: FBExp
      type(ESMF_Mesh) :: meshExp
      type(ESMF_RouteHandle), pointer :: RHImp2Exp(:)
-     ! Per-connection (compName(n)) land/ocean mask values for FB_copy's masked regrid, see ImportMaskValues
      integer, allocatable :: importSrcMaskValue(:)
      integer, allocatable :: importDstMaskValue(:)
      logical, allocatable :: importMaskIsSet(:)

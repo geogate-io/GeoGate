@@ -39,10 +39,9 @@ module geogate_nuopc
   use NUOPC, only: NUOPC_SetAttribute, NUOPC_GetAttribute
   use NUOPC, only: NUOPC_CompAttributeGet, NUOPC_CompAttributeSet
   use NUOPC, only: NUOPC_CompCheckSetClock, NUOPC_SetTimestamp
-  use NUOPC, only: NUOPC_Advertise
-  use NUOPC, only: NUOPC_Realize
+  use NUOPC, only: NUOPC_Advertise, NUOPC_Realize, NUOPC_IsUpdated
   use NUOPC, only: NUOPC_FieldDictionarySetAutoAdd, NUOPC_AddNamespace
-  use NUOPC, only: NUOPC_NoOP
+  use NUOPC, only: NUOPC_NoOP, NUOPC_IsConnected
  
   use NUOPC_Model, only: SetVM
   use NUOPC_Model, only: NUOPC_ModelGet
@@ -62,6 +61,7 @@ module geogate_nuopc
   use geogate_share, only: ChkErr
   use geogate_share, only: FB_init_pointer
   use geogate_share, only: StringSplit
+  use geogate_share, only: StateDiagnose
   use geogate_share, only: debugMode
   use geogate_share, only: fillValue
   
@@ -645,9 +645,6 @@ contains
     type(InternalState) :: is_local
     character(len=ESMF_MAXSTR) :: mesh_file
     character(len=ESMF_MAXSTR) :: cvalue
-    logical :: elementMaskIsPresent
-    integer, allocatable :: elementMask(:)
-    real(ESMF_KIND_R8), pointer :: dataPtr(:)
     character(len=*), parameter :: subname = trim(modName)//':(RealizeProvided) '
     !---------------------------------------------------------------------------
 
@@ -693,42 +690,25 @@ contains
        ! Create fields
        ! Assuming that all fields share the same grid/mesh
        do n = 1, size(exportFieldNameList)
-          ! Create field on mesh
-          meshField = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
-            meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-          ! Check field name
-          if (trim(exportFieldNameList(n)) == 'Sa_ofrac') then
-             ! Check if mesh has element mask
-             call ESMF_MeshGet(is_local%wrap%meshExp, elementMaskIsPresent=elementMaskIsPresent, rc=rc)
+          ! Check if field is connected to any component
+          if (NUOPC_IsConnected(is_local%wrap%NStateExp, fieldName=trim(exportFieldNameList(n)))) then
+             ! Create field on mesh
+             meshField = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
+               meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-             if (elementMaskIsPresent) then
-                ! Query field pointer
-                call ESMF_FieldGet(meshField, farrayPtr=dataPtr, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                ! Query mesh mask
-                call ESMF_MeshGet(is_local%wrap%meshExp, elementMask=elementMask, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-                ! Fill with actual mask data
-                dataPtr(:) = real(elementMask(:), ESMF_KIND_R8)
-             else
-                ! Fill with initial data
-                call ESMF_FieldFill(meshField, dataFillScheme="const", const1=1.0d0, rc=rc)
-                if (ChkErr(rc,__LINE__,u_FILE_u)) return
-             end if
+             ! Realize field
+             call NUOPC_Realize(is_local%wrap%NStateExp, field=meshField, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
           else
-             ! Fill with some unrealistic large data
-             call ESMF_FieldFill(meshField, dataFillScheme="const", const1=fillValue, rc=rc)
-             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          end if
+             ! Print debug info
+             call ESMF_LogWrite(trim(subname)//": Field "//trim(exportFieldNameList(n))// &
+               " is not connected to any component. Skip creating field.", ESMF_LOGMSG_INFO)
 
-          ! Realize field
-          call NUOPC_Realize(is_local%wrap%NStateExp, field=meshField, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             ! Remove field from export state
+             call ESMF_StateRemove(is_local%wrap%NStateExp, itemNameList=(/trim(exportFieldNameList(n))/), relaxedFlag=.true., rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+            end if
        end do
 
        ! Add field to FB for easy access
@@ -749,15 +729,16 @@ contains
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: n
+    integer :: n, elementCount
     type(InternalState) :: is_local
     type(ESMF_Field) :: field
-    type(ESMF_Clock) :: modelClock
-    type(ESMF_Time) :: currTime
     logical :: isPresent, isSet
     logical, save :: first_call = .true.
     character(len=255) :: cvalue
     character(len=255) :: msg
+    logical :: elementMaskIsPresent
+    integer, pointer :: elementMask(:)
+    real(ESMF_KIND_R8), pointer :: dataPtr(:)
     character(len=*), parameter :: subname = trim(modName)//':(DataInitialize) '
     !---------------------------------------------------------------------------
 
@@ -790,34 +771,77 @@ contains
        return
     end if
 
-    ! Loop over fields in export state and and initialize their time stamps
+    ! Check if export fields are available
     if (allocated(exportFieldNameList)) then
-       ! Query component
-       call NUOPC_ModelGet(gcomp, modelClock=modelClock, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-       ! Query clock
-       call ESMF_ClockGet(modelClock, currTime=currTime, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
+       ! Loop over fields in export state
        do n = 1, size(exportFieldNameList)
+          ! Debug info
+          call ESMF_LogWrite(trim(subname)//": Initializing field "//trim(exportFieldNameList(n)), ESMF_LOGMSG_INFO)
+
           ! Query field
           call ESMF_StateGet(is_local%wrap%NStateExp, field=field, itemName=exportFieldNameList(n), rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Set the TimeStamp according to time
-          call NUOPC_SetTimestamp(field, currTime, rc=rc)
+          ! Check if field is "Sa_ofrac"
+          if (trim(exportFieldNameList(n)) == 'Sa_ofrac') then
+             ! Query export mesh for element mask
+             call ESMF_MeshGet(is_local%wrap%meshExp, elementMaskIsPresent=elementMaskIsPresent, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Check if mesh has element mask
+             if (elementMaskIsPresent) then
+                ! Query element count
+                call ESMF_MeshGet(is_local%wrap%meshExp, elementCount=elementCount, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Allocate element mask pointer
+                allocate(elementMask(elementCount))
+
+                ! Query element mask
+                call ESMF_MeshGet(is_local%wrap%meshExp, elementMask=elementMask, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Query field pointer
+                call ESMF_FieldGet(field, localDe=0, farrayPtr=dataPtr, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Fill field with element mask
+                dataPtr(:) = real(elementMask(:), kind=ESMF_KIND_R8)
+                nullify(dataPtr)
+                
+                ! Clean memory
+                deallocate(elementMask)
+             else
+                ! Fill with all ones if no element mask is present
+                call ESMF_FieldFill(field, dataFillScheme="const", const1=1.0d0, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+             end if
+          else
+             ! Fill with some unrealistic large data
+             call ESMF_FieldFill(field, dataFillScheme="const", const1=fillValue, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
+
+          ! Set field "Updated" attribute to "true"
+          call NUOPC_SetAttribute(field, name="Updated", value="true", rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end do
     end if
 
-    ! Set InitializeDataComplete Component Attribute to "true", indicating
-    ! to the driver that this Component has fully initialized its data
-    call NUOPC_CompAttributeSet(gcomp, name="InitializeDataComplete", value="true", rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_LogWrite("COP - Initialize-Data-Dependency allDone check Passed", ESMF_LOGMSG_INFO)
+    ! Check whether all Fields in the exportState are "Updated"
+    if (NUOPC_IsUpdated(is_local%wrap%NStateExp)) then
+       call NUOPC_CompAttributeSet(gcomp, name="InitializeDataComplete", value="true", rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! Get generic options
+       call ESMF_LogWrite(trim(subname)//' : Initialize-Data-Dependency SATISFIED!!!', ESMF_LOGMSG_INFO)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
+
+    ! Debug export state
+    call StateDiagnose(is_local%wrap%NStateExp, 'Export State', rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Set debug option
     call NUOPC_CompAttributeGet(gcomp, name='DebugMode', value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
     debugMode = .false.

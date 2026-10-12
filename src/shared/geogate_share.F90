@@ -35,6 +35,7 @@ module geogate_share
   public :: StringSplit
   public :: FB_copy
   public :: FB_init_pointer
+  public :: StateDiagnose
 
   !-----------------------------------------------------------------------------
   ! Public module data
@@ -317,35 +318,46 @@ module geogate_share
 
     ! Create routehandle for interpolation
     if (.not. ESMF_RouteHandleIsCreated(rh)) then
+       ! Check if source and destination meshes have element masks
        srcMaskIsPresent = .false.
        dstMaskIsPresent = .false.
        if (present(srcMaskValue) .and. present(dstMaskValue)) then
+          ! Query source mesh for element mask
           call ESMF_FieldGet(fldSrc, mesh=srcMesh, rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          ! Query source mesh for element mask presence
           call ESMF_MeshGet(srcMesh, elementMaskIsPresent=srcMaskIsPresent, rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+          ! Query destination mesh for element mask presence
           call ESMF_MeshGet(mesh, elementMaskIsPresent=dstMaskIsPresent, rc=rc)
           if (chkerr(rc,__LINE__,u_FILE_u)) return
        end if
 
+       ! Create routehandle for interpolation
        if (srcMaskIsPresent .and. dstMaskIsPresent) then
-          ! Masked conservative regrid, mirrors CMEPS's own mapconsf (med_map_mod.F90)
+          ! Debug info
           write(logmsg, fmt='(A,I0,A,I0)') subname//' '//trim(name)//': masked conservative regrid, srcMask=', &
             srcMaskValue, ' dstMask=', dstMaskValue
           call ESMF_LogWrite(trim(logmsg), ESMF_LOGMSG_INFO)
+
+          ! Routehandle for conservative regridding
           call ESMF_FieldBundleRegridStore(FBin, FBout, regridmethod=ESMF_REGRIDMETHOD_CONSERVE, &
             normType=ESMF_NORMTYPE_FRACAREA, srcMaskValues=(/srcMaskValue/), dstMaskValues=(/dstMaskValue/), &
             srcTermProcessing=srcTermProcessing, ignoreDegenerate=.true., &
             unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, routehandle=rh, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
        else
-          if (present(srcMaskValue) .and. present(dstMaskValue)) then
-             call ESMF_LogWrite(subname//' '//trim(name)//': mesh has no elementMask, using unmasked bilinear', ESMF_LOGMSG_WARNING)
-          end if
+          ! Debug info
+          call ESMF_LogWrite(subname//' '//trim(name)//': mesh has no elementMask, using unmasked bilinear', ESMF_LOGMSG_WARNING)
+
+          ! Routehandle for bilinear interpolation
           call ESMF_FieldBundleRegridStore(FBin, FBout, regridmethod=ESMF_REGRIDMETHOD_BILINEAR, &
             polemethod=ESMF_POLEMETHOD_ALLAVG, srcTermProcessing=srcTermProcessing, &
             ignoreDegenerate=.true., unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, routehandle=rh, rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
        end if
-       if (chkerr(rc,__LINE__,u_FILE_u)) return
     end if
 
     ! Perform interpolation
@@ -359,5 +371,60 @@ module geogate_share
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine FB_copy
+
+  !-----------------------------------------------------------------------------
+
+  subroutine StateDiagnose(state, name, rc)
+
+    ! input/output variables
+    type(ESMF_State), intent(in) :: state
+    character(len=*), intent(in) :: name
+    integer, intent(out), optional :: rc
+
+    ! local variables
+    integer :: n, fieldCount
+    type(ESMF_Field) :: field
+    character(ESMF_MAXSTR) :: msgString
+    character(ESMF_MAXSTR), pointer :: fieldNameList(:)
+    real(ESMF_KIND_R8), pointer :: dataPtr(:)
+    character(len=*), parameter :: subname = trim(modName)//':(StateDiagnose) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    ! Determine number of fields in state and allocate memory for fieldNameList
+    call ESMF_StateGet(state, itemCount=fieldCount, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    allocate(fieldNameList(fieldCount))
+
+    ! Get the fields in the state
+    call ESMF_StateGet(state, itemNameList=fieldNameList, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    ! Loop over fields in the state and print their names
+    do n = 1, fieldCount
+       ! Get field from state
+       call ESMF_StateGet(state, itemName=trim(fieldNameList(n)), field=field, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_FieldGet(field, farrayPtr=dataPtr, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       ! Print statistics about the field
+       if (size(dataPtr) > 0) then
+          write(msgString, fmt='(A,G14.7,A,G14.7,A,G14.7,A,I0)') trim(subname)//': '//trim(name)//' '//trim(fieldNameList(n))// &
+             ' min=', minval(dataPtr), ' max=', maxval(dataPtr), ' sum=', sum(dataPtr), ' size=', size(dataPtr)
+          call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
+       else
+          call ESMF_LogWrite(trim(subname)//' '//trim(name)//' '//trim(fieldNameList(n))// &
+             ': Field is empty', ESMF_LOGMSG_INFO)
+       end if
+    end do
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine StateDiagnose
 
 end module geogate_share
