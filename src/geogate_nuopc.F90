@@ -838,8 +838,10 @@ contains
     end if
 
     ! Debug export state
-    call StateDiagnose(is_local%wrap%NStateExp, 'Export State', rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (allocated(exportFieldNameList)) then
+       call StateDiagnose(is_local%wrap%NStateExp, 'Export State', rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
 
     ! Set debug option
     call NUOPC_CompAttributeGet(gcomp, name='DebugMode', value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
