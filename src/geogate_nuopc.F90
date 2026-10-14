@@ -150,13 +150,15 @@ contains
     call NUOPC_CompSpecialize(gcomp, specLabel=model_label_DataInitialize, specRoutine=DataInitialize, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! It is used to run user specified phase to process the data
-    call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specRoutine=Advance, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
     !------------------
     ! setup custom phases
     !------------------
+
+    ! Diagnostic
+    call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, phaseLabelList=(/ 'geogate_phases_diag' /), userRoutine=model_routine_Run, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specPhaseLabel="geogate_phases_diag", specRoutine=geogate_phases_diag_run, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! I/O phase
     call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, phaseLabelList=(/ 'geogate_phases_io' /), userRoutine=model_routine_Run, rc=rc)
@@ -1258,29 +1260,41 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine Advance(gcomp, rc)
+  subroutine geogate_phases_diag_run(gcomp, rc)
 
     ! input/output variables
     type(ESMF_GridComp) :: gcomp
     integer, intent(out) :: rc
 
     ! local variables
-    type(ESMF_Time) :: currTime
-    type(ESMF_Clock) :: clock
-    type(ESMF_State) :: importState, exportState
-    logical :: isPresent, isSet 
-    character(len=ESMF_MAXSTR) :: message
-    character(len=ESMF_MAXSTR) :: cvalue 
-    character(len=ESMF_MAXSTR) :: timeStr
-    character(len=*), parameter :: subname = trim(modName)//':(Advance) '
+    integer :: n
+    type(InternalState) :: is_local
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_diag_run) '
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
     call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
 
+    ! Get the internal state
+    nullify(is_local%wrap)
+    call ESMF_GridCompGetInternalState(gcomp, is_local, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Loop over import states
+    do n = 1, is_local%wrap%numComp
+       ! Debug import state
+       call StateDiagnose(is_local%wrap%NStateImp(n), 'Import State '//trim(is_local%wrap%compName(n)), rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end do
+
+    ! Debug export state
+    if (ESMF_StateIsCreated(is_local%wrap%NStateExp, rc=rc)) then
+       call StateDiagnose(is_local%wrap%NStateExp, 'Export State', rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    end if
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
-  end subroutine Advance
+  end subroutine geogate_phases_diag_run
 
 end module geogate_nuopc
