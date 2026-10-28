@@ -1,5 +1,123 @@
 # Hydro Plugin Tools
 
+## convert_sourcesink_mapping.py
+
+**SCHISM/pySCHISM-specific.** Converts the `sources.json`/`sinks.json`
+files produced by [pySCHISM](https://github.com/schism-dev/pyschism)'s own
+NWM source/sink generation (`{element_id: [flow_id, ...]}`) into the
+hydro plugin's generic `export_element_map_file` format (`flow_id
+element_index weight`, one entry per line) -- for case 3 (map flow ids
+onto an external mesh; see `docs/source/hydro.rst`: Export Side). The
+plugin's own `export_element_map_file` format is not SCHISM-specific --
+this converter is just a convenience for the one input shape pySCHISM
+happens to produce; a different unstructured-grid model's own source/sink
+mapping would need its own converter (or could be hand-written directly in
+this plain `flow_id element_index [weight]` format).
+
+The mapping is treated as many-to-many, merging both input files first and
+de-duplicating on the exact `(flow_id, element_id)` pair (not on either
+column alone):
+
+- An element fed by more than one flow id gets one entry per flow id; the
+  plugin sums their values at that element.
+- A flow id that maps to more than one distinct element (e.g. the same NWM
+  reach acting as a source into one element and a sink from another) gets
+  its value split evenly across them: `weight = 1/N`. A flow id appearing
+  only once gets `weight = 1.0`.
+
+### Requirements
+
+Python, standard library only.
+
+### Usage
+
+```
+python3 convert_sourcesink_mapping.py \
+    --sources mapping/sources.json --sinks mapping/sinks.json \
+    --output mapping/export_element_map.txt
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--sources` | (optional) | Path to `sources.json` -- give at least one of `--sources`/`--sinks` |
+| `--sinks` | (optional) | Path to `sinks.json` |
+| `--output` | (required) | `export_element_map_file` to write |
+
+## download_nwm_retrospective.py
+
+Downloads NWM Retrospective v3.0 `CHRTOUT` files (CONUS, hourly) from
+NOAA's public S3 archive for a given date range, one file at a time --
+useful for building a local `data_files:` set for the hydro plugin's
+`hydro_config.yaml` without needing AWS credentials (the bucket is public;
+anonymous HTTPS GET works directly). Verified against the live bucket:
+
+```
+https://noaa-nwm-retrospective-3-0-pds.s3.amazonaws.com/CONUS/netcdf/CHRTOUT/<YYYY>/<YYYYMMDDHHMM>.CHRTOUT_DOMAIN1
+```
+
+Re-running with the same arguments skips files already downloaded, so an
+interrupted multi-day download can simply be re-run to resume.
+
+### Requirements
+
+Python with `requests` (present in NCAR's `npl` conda env: `module load
+conda && conda activate npl`).
+
+### Usage
+
+```
+python3 download_nwm_retrospective.py --start 2010-01-01 --end 2010-01-02 --outdir CHRTOUT
+python3 download_nwm_retrospective.py --start 2010-01-01T06:00 --end 2010-01-01T12:00 --outdir CHRTOUT
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--start` | (required) | Start date/time (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`) |
+| `--end` | (required) | End date/time, inclusive, same format as `--start` |
+| `--outdir` | (required) | Directory to save files into |
+
+This is the **Retrospective v3.0** archive (a multi-decade reanalysis-style
+simulation), not the real-time operational forecast feed -- the latter
+lives on a different bucket (`noaa-nwm-pds`) with a different layout and
+would need a separate tool.
+
+## plot_export_map.py
+
+Reads the ASCII VTK files the hydro plugin writes for its export-side Mesh
+field (`ESMF_FieldWriteVTK`, one file per PET per output timestamp) and
+plots the non-fill (actually mapped) element locations on a map, sized by
+value on a log scale -- a quick visual sanity check for an
+`export_element_map_file` run (e.g. a SCHISM source/sink mapping built by
+`convert_sourcesink_mapping.py`). Each PET's file holds the full mesh but
+only fills in values for the elements it owns; combining all PET files for
+one timestamp and keeping only non-fill elements recovers every mapped
+element exactly once. It also prints a correctness report (PET file/cell
+counts, duplicate-ownership check, and, with `--mapping-file`, a check that
+the non-fill element count matches the mapping file's own unique-element
+count).
+
+### Requirements
+
+Python with `numpy`, `matplotlib`, and `cartopy` (all present in NCAR's
+`npl` conda env: `module load conda && conda activate npl`). `cartopy`
+downloads Natural Earth coastline/states/rivers data on first use and
+caches it afterward.
+
+### Usage
+
+```
+python3 plot_export_map.py --vtk-dir /path/to/run \
+    --mapping-file mapping/mapping.txt --output export_map.png
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--vtk-dir` | `.` | Directory containing the `*.vtk` files |
+| `--timestamp` | latest found | ISO timestamp to plot |
+| `--field` | the only one found | Field name to plot, if more than one is present |
+| `--mapping-file` | (optional) | `export_element_map_file` to cross-check the non-fill element count against |
+| `--output` | `export_map.png` | Output image path |
+
 ## mesh_nwm.py
 
 Builds an ESMF unstructured-mesh netCDF file from a coordinate file's

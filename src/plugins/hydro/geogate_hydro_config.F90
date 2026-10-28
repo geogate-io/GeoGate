@@ -10,7 +10,7 @@ module geogate_hydro_config
   use ESMF, only: ESMF_HConfigCreateAt, ESMF_HConfigAsString, ESMF_HConfigAsI4, ESMF_HConfigGetSize
   use ESMF, only: ESMF_HConfigIsDefined
   use ESMF, only: ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_LOGMSG_ERROR
-  use ESMF, only: ESMF_SUCCESS, ESMF_FAILURE, ESMF_MAXSTR
+  use ESMF, only: ESMF_SUCCESS, ESMF_FAILURE, ESMF_MAXSTR, ESMF_KIND_R8
 
   use geogate_share, only: ChkErr, StringSplit
 
@@ -30,6 +30,8 @@ module geogate_hydro_config
   private :: ReadIntListFile
   private :: ReadElementMapFile
   private :: CheckNoDuplicates
+  private :: CheckNoDuplicatePairs
+  private :: CheckWeightSums
 
   type, public :: HydroConfigType
      character(len=ESMF_MAXSTR) :: coordFile = ""
@@ -47,13 +49,18 @@ module geogate_hydro_config
      !   neither populated       -> export every point (today's behavior)
      !   exportIds populated     -> export only this subset of flow ids
      !   exportElementMapIds/
-     !   exportElementMapElements populated -> export onto an external
-     !     mesh, filling only exportElementMapElements(n)'s 1-based element
-     !     with exportElementMapIds(n)'s data, everything else left at the
-     !     fill sentinel
+     !   exportElementMapElements/exportElementMapWeights populated ->
+     !     export onto an external mesh. The mapping is many-to-many: the
+     !     same element may appear more than once (its contributors' values
+     !     are summed), and the same flow id may appear more than once
+     !     (e.g. split across several elements via exportElementMapWeights,
+     !     which multiplies each entry's value before summing -- defaults
+     !     to 1.0 when the map file gives no weight column). Every element
+     !     with no matching entry is left at the fill sentinel.
      integer, allocatable :: exportIds(:)
      integer, allocatable :: exportElementMapIds(:)
      integer, allocatable :: exportElementMapElements(:)
+     real(ESMF_KIND_R8), allocatable :: exportElementMapWeights(:)
   end type HydroConfigType
 
   !-----------------------------------------------------------------------------
@@ -414,21 +421,24 @@ contains
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     else if (hasMapFile) then
-       ! Read the export_element_map_file and populate config%exportElementMapIds and config%exportElementMapElements
+       ! Read the export_element_map_file and populate config%exportElementMapIds,
+       ! config%exportElementMapElements, and config%exportElementMapWeights
        mapFile = trim(ESMF_HConfigAsString(hconfigHydro, keyString="export_element_map_file", rc=rc))
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
        ! Read the element map file and populate the corresponding arrays in the config
-       call ReadElementMapFile(mapFile, config%exportElementMapIds, config%exportElementMapElements, rc)
+       call ReadElementMapFile(mapFile, config%exportElementMapIds, config%exportElementMapElements, &
+          config%exportElementMapWeights, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Check for duplicate flow IDs in the export_element_map_file
-       call CheckNoDuplicates(config%exportElementMapIds, "export_element_map_file (flow id column)", rc)
+       ! The mapping is many-to-many (see HydroConfigType), so neither
+       ! column is checked for duplicates on its own -- only an exact
+       ! repeated (flow_id, element) pair indicates a real mistake
+       call CheckNoDuplicatePairs(config%exportElementMapIds, config%exportElementMapElements, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Check for duplicate element indices in the export_element_map_file
-       call CheckNoDuplicates(config%exportElementMapElements, &
-          "export_element_map_file (element index column)", rc)
+       ! A flow id split across multiple elements must not be over-allocated
+       call CheckWeightSums(config%exportElementMapIds, config%exportElementMapWeights, rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     else
@@ -511,22 +521,27 @@ contains
 
   !-----------------------------------------------------------------------------
 
-  subroutine ReadElementMapFile(filename, mapIds, mapElements, rc)
+  subroutine ReadElementMapFile(filename, mapIds, mapElements, mapWeights, rc)
 
-    ! Reads a plain-text file of "flow_id element_index" pairs, one per
-    ! line (whitespace-separated; blank lines and '#'-prefixed comments
-    ! skipped) -- used for export_element_map_file. element_index is the
-    ! target mesh's own 1-based element position (see docs/source/hydro.rst:
-    ! Export Side).
+    ! Reads a plain-text file of "flow_id element_index [weight]" entries,
+    ! one per line (whitespace-separated; blank lines and '#'-prefixed
+    ! comments skipped) -- used for export_element_map_file. element_index
+    ! is the target mesh's own 1-based element position (see
+    ! docs/source/hydro.rst: Export Side). weight is optional and defaults
+    ! to 1.0 when a line gives only the first two columns -- used to split
+    ! a single flow id's value across more than one element (e.g. an equal
+    ! 1/N share to each); the same element may also appear on more than one
+    ! line, with its contributors' (weighted) values summed.
 
     ! input/output variables
     character(len=*), intent(in) :: filename
     integer, allocatable, intent(out) :: mapIds(:)
     integer, allocatable, intent(out) :: mapElements(:)
+    real(ESMF_KIND_R8), allocatable, intent(out) :: mapWeights(:)
     integer, intent(out) :: rc
 
     ! local variables
-    integer :: iounit, ios, n, nitem
+    integer :: iounit, ios, iosLine, n, nitem
     character(ESMF_MAXSTR) :: line
     character(len=*), parameter :: subname = trim(modName)//':(ReadElementMapFile) '
     !---------------------------------------------------------------------------
@@ -560,10 +575,10 @@ contains
        return
     end if
 
-    ! Allocate the output arrays to hold the flow IDs and corresponding element indices
-    allocate(mapIds(nitem), mapElements(nitem))
+    ! Allocate the output arrays to hold the flow IDs, element indices, and weights
+    allocate(mapIds(nitem), mapElements(nitem), mapWeights(nitem))
 
-    ! Rewind the file to read the flow ID and element index pairs into the allocated arrays
+    ! Rewind the file to read the flow ID / element index / optional weight entries
     rewind(iounit)
     n = 0
     do
@@ -572,10 +587,17 @@ contains
        line = adjustl(line)
        if (len_trim(line) == 0 .or. line(1:1) == '#') cycle
        n = n + 1
-       read(line, *) mapIds(n), mapElements(n)
+       ! Try reading all three columns first; a line with only the first
+       ! two falls short of the list-directed read and leaves iosLine /= 0,
+       ! so fall back to reading just those two and default weight to 1.0
+       read(line, *, iostat=iosLine) mapIds(n), mapElements(n), mapWeights(n)
+       if (iosLine /= 0) then
+          read(line, *) mapIds(n), mapElements(n)
+          mapWeights(n) = 1.0d0
+       end if
     end do
 
-   ! Close file after reading all flow ID and element index pairs
+   ! Close file after reading all entries
     close(iounit)
 
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
@@ -620,5 +642,94 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine CheckNoDuplicates
+
+  !-----------------------------------------------------------------------------
+
+  subroutine CheckNoDuplicatePairs(ids, elements, rc)
+
+    ! Hard error on an exact duplicate (id, element) pair -- used for
+    ! export_element_map_file's many-to-many mapping (see HydroConfigType),
+    ! where a repeated id alone or a repeated element alone is expected and
+    ! allowed, but the identical pair appearing twice indicates a mistake
+    ! (e.g. the same line duplicated, or present in both a merged sources
+    ! and sinks mapping).
+
+    ! input/output variables
+    integer, intent(in) :: ids(:)
+    integer, intent(in) :: elements(:)
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: i, j
+    character(ESMF_MAXSTR) :: message
+    character(len=*), parameter :: subname = trim(modName)//':(CheckNoDuplicatePairs) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    do i = 1, size(ids)
+       do j = i+1, size(ids)
+          if (ids(i) == ids(j) .and. elements(i) == elements(j)) then
+             write(message, fmt='(A,I0,A,I0,A)') trim(subname)//": ERROR duplicate (flow_id, element) pair (", &
+                ids(i), ', ', elements(i), ") found in export_element_map_file"
+             call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
+             rc = ESMF_FAILURE
+             return
+          end if
+       end do
+    end do
+
+  end subroutine CheckNoDuplicatePairs
+
+  !-----------------------------------------------------------------------------
+
+  subroutine CheckWeightSums(ids, weights, rc)
+
+    ! Hard error if any flow id's weights (across every element it's split
+    ! across) sum to more than 1.0 -- that would mean more of its flow is
+    ! being distributed than actually exists. A small tolerance absorbs
+    ! floating-point rounding from an exact fraction like 1/3 + 1/3 + 1/3.
+
+    ! input/output variables
+    integer, intent(in) :: ids(:)
+    real(ESMF_KIND_R8), intent(in) :: weights(:)
+    integer, intent(out) :: rc
+
+    ! local variables
+    integer :: i, j
+    real(ESMF_KIND_R8) :: wsum
+    real(ESMF_KIND_R8), parameter :: tol = 1.0d-6
+    logical, allocatable :: counted(:)
+    character(ESMF_MAXSTR) :: message
+    character(len=*), parameter :: subname = trim(modName)//':(CheckWeightSums) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    allocate(counted(size(ids)))
+    counted(:) = .false.
+
+    do i = 1, size(ids)
+       if (counted(i)) cycle
+       wsum = weights(i)
+       do j = i+1, size(ids)
+          if (ids(j) == ids(i)) then
+             wsum = wsum + weights(j)
+             counted(j) = .true.
+          end if
+       end do
+       if (wsum > 1.0d0 + tol) then
+          write(message, fmt='(A,I0,A,F0.6,A)') trim(subname)//": ERROR weights for flow id ", &
+             ids(i), " sum to ", wsum, " -- this exceeds 1.0, check export_element_map_file"
+          call ESMF_LogWrite(trim(message), ESMF_LOGMSG_ERROR)
+          rc = ESMF_FAILURE
+          deallocate(counted)
+          return
+       end if
+    end do
+
+    deallocate(counted)
+
+  end subroutine CheckWeightSums
 
 end module geogate_hydro_config

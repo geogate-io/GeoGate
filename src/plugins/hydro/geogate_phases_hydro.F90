@@ -703,15 +703,17 @@ contains
   subroutine ApplyExportElementMap(rc)
 
     ! export_element_map_file: pushes data to the matched export Mesh
-    ! fields. Each PET contributes its own
-    ! locally-owned values (zero elsewhere) into a small per-map-entry
-    ! buffer; ESMF_VMAllReduce(sum) combines them across this component's
-    ! own PETs -- exact, not approximate, since exactly one PET owns each
-    ! map entry's flow id (duplicates are rejected at config-read time), so
-    ! every non-owner's zero contribution cannot corrupt the sum. Each PET
-    ! then writes its own locally-owned portion of the combined result
-    ! straight into the matched export field (see docs/source/hydro.rst:
-    ! Export Side).
+    ! fields. Each PET contributes its own locally-owned values (zero
+    ! elsewhere) into a small per-map-entry buffer; ESMF_VMAllReduce(sum)
+    ! combines them across this component's own PETs -- exact, not
+    ! approximate, since exactly one PET owns each map entry's flow id, so
+    ! every non-owner's zero contribution cannot corrupt the sum. The
+    ! mapping is many-to-many (see HydroConfigType): an element targeted by
+    ! more than one entry gets their (weighted) values summed, and
+    ! config%exportElementMapWeights lets a single flow id be split across
+    ! more than one element (e.g. an equal 1/N share each) instead of
+    ! sending its full value to each one (see docs/source/hydro.rst: Export
+    ! Side).
 
     ! input/output variables
     integer, intent(out) :: rc
@@ -724,22 +726,39 @@ contains
 
     rc = ESMF_SUCCESS
 
+    ! Allocate the per-map-entry contribution and combined buffers (size = mapCount)
     allocate(contrib(mapCount), combined(mapCount))
 
+    ! Loop over each configured variable and push its data to the matched export Mesh field
     do n = 1, size(config%variableNames)
        if (.not. hasExportElementField(n)) cycle
 
+       ! Each PET contributes its own locally-owned values (zero elsewhere) into the contrib buffer
        contrib(:) = 0.0d0
        do k = 1, mapCount
           if (mapLocalHydroIndex(k) > 0) contrib(k) = varData(n)%p(mapLocalHydroIndex(k))
        end do
 
+       ! Combine the contrib buffers across this component's own PETs into the combined buffer
        call ESMF_VMAllReduce(vm, sendData=contrib, recvData=combined, count=mapCount, &
           reduceflag=ESMF_REDUCE_SUM, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) exit
 
+       ! Reset every locally-owned, targeted element to 0 first -- more
+       ! than one map entry can target the same element (many-to-one), so
+       ! the loop below must accumulate into it rather than overwrite it
        do k = 1, mapCount
-          if (mapLocalExportIndex(k) > 0) exportElementData(n)%p(mapLocalExportIndex(k)) = combined(k)
+          if (mapLocalExportIndex(k) > 0) exportElementData(n)%p(mapLocalExportIndex(k)) = 0.0d0
+       end do
+
+       ! Accumulate each entry's weighted contribution (weight defaults to
+       ! 1.0 when export_element_map_file gives no weight column) into its
+       ! own locally-owned, targeted element
+       do k = 1, mapCount
+          if (mapLocalExportIndex(k) > 0) then
+             exportElementData(n)%p(mapLocalExportIndex(k)) = exportElementData(n)%p(mapLocalExportIndex(k)) &
+                + combined(k)*config%exportElementMapWeights(k)
+          end if
        end do
     end do
 

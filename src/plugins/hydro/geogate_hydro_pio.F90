@@ -5,7 +5,7 @@ module geogate_hydro_pio
   ! on-disk positions it owns via PIO_initdecomp + a "compdof" array.
   !-----------------------------------------------------------------------------
 
-  use netcdf, only: NF90_INT, NF90_FLOAT, NF90_DOUBLE
+  use netcdf, only: NF90_SHORT, NF90_INT, NF90_FLOAT, NF90_DOUBLE
 
   use pio, only: iosystem_desc_t, file_desc_t, io_desc_t, var_desc_t
   use pio, only: PIO_init, PIO_finalize
@@ -192,7 +192,13 @@ contains
 
     ! Read the variable data into a local buffer based on its on-disk type, then convert to real*8 for the output array
     select case (xtype)
-    case (NF90_INT)
+    case (NF90_INT, NF90_SHORT)
+       ! A short (2-byte) on-disk variable is read through this same PIO_int
+       ! path: netCDF's get_vara-style reads always widen short -> int
+       ! losslessly on read (independent of any scale_factor/add_offset,
+       ! which PIO never applies -- see geogate_phases_hydro.F90's
+       ! BlendAndFillFields for where this plugin applies it, once, itself).
+
        ! Allocate a local integer buffer for the decomposed read of the variable
        allocate(intBuf(localCount))
 
@@ -237,7 +243,7 @@ contains
     case default
        ! Unsupported on-disk type for the variable; log an error and return failure
        call ESMF_LogWrite(trim(subname)//': ERROR unsupported on-disk type for '//trim(varName)// &
-          ' (only NF90_INT, NF90_FLOAT, NF90_DOUBLE are supported)', ESMF_LOGMSG_ERROR)
+          ' (only NF90_SHORT, NF90_INT, NF90_FLOAT, NF90_DOUBLE are supported)', ESMF_LOGMSG_ERROR)
        rc = ESMF_FAILURE
        return
     end select
