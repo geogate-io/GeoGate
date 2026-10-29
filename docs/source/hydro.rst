@@ -9,6 +9,9 @@ The Hydro plugin ingests point coordinates from a configured NetCDF file and bui
 .. note::
   The plugin ingests real, time-varying data (see "Data Ingest" below) and can export it to another component by matching each configured variable against a field already present in the export state (``ExportType``/``ExportMeshFile``/``ExportFields``, read generically by ``geogate_nuopc.F90`` — see the :doc:`GeoGate Overview <overview>`). All four ``time_selection`` modes (``nearest``/``lower``/``upper``/``linear``) are implemented.
 
+.. note::
+  ``test_hydro.yaml`` exercises this plugin end-to-end in CI (a real two-instance ``ROF -> OCN`` run against 3 hours of real NWM data, mode 3's element mapping, and :doc:`IO plugin <io>` VTK output) — see :doc:`Automated Testing <testing>`.
+
 ========================================
 Plugin Specific Third-party Dependencies
 ========================================
@@ -28,6 +31,9 @@ Building GeoGate with Hydro Plugin Support
 To build the Hydro plugin, provide the ``-DGEOGATE_USE_HYDRO=ON`` CMake option at build time. Otherwise, GeoGate builds a void phase that logs an error and returns a failure code if invoked, and neither NetCDF-Fortran nor PIO is required.
 
 When built as part of a larger CMake project (e.g. as a subdirectory of ufs-weather-model) that already calls ``find_package(PIO)`` itself, the plugin reuses the resulting ``PIO::PIO_Fortran`` target rather than re-running ``FindPIO.cmake``, which would otherwise fail trying to recreate its ``ALIAS`` targets.
+
+.. tip::
+  If PIO comes from a Spack environment that built ESMF with the ``+external-parallelio`` variant (rather than a project that already calls ``find_package(PIO)`` itself, as above), ``find_package(PIO REQUIRED COMPONENTS Fortran)`` may still need a hint to find it: loading the Spack-generated ``parallelio`` module and pointing ``PIO_DIR`` at ``spack location -i parallelio`` before configuring worked without further changes (see :doc:`Automated Testing <testing>`'s ``install_geogate`` notes, which does exactly this for ``test_hydro.yaml``).
 
 =============================
 Runtime Configuration Options
@@ -57,6 +63,9 @@ The plugin reads a small YAML configuration file (default path ``hydro_config.ya
 - **lat_variable** / **lon_variable**: names of the 1-D latitude/longitude variables, sharing the same dimension as ``id_variable``.
 - **order_variable** (optional): name of a variable giving, for each target-order point, its 0-based on-disk record in ``coord_file``. Omit this key entirely when the coordinate file's on-disk order should be used as the target order as-is (the common case for a new/generic data source); see "Parallel Decomposition Implementation" below for when this is actually needed.
 - **data_files**: list of one or more data files to ingest, all sharing ``coord_file``'s point ordering and the same variable schema. A file may hold one or more time records.
+
+  .. tip::
+    NWM's `Retrospective v3.0 <https://noaa-nwm-retrospective-3-0-pds.s3.amazonaws.com/index.html>`_ ``CHRTOUT`` files (a multi-decade reanalysis-style archive, hourly CONUS) work as ``data_files`` with no plugin changes: verified schema-identical to the forecast ``channel_rt`` files used throughout this page, including byte-for-byte matching ``feature_id`` order. ``hydro/tools/download_nwm_retrospective.py`` downloads a date range directly from the public (anonymous HTTPS) S3 bucket.
 - **time_variable**: name of the time coordinate variable present in each data file. Its CF ``units`` attribute (e.g. ``"hours since 2000-01-01 00:00:00"``) is parsed to get that file's actual valid time(s) — no fixed time resolution or reference epoch is assumed.
 - **time_selection** (optional, default ``nearest``): how to pick a ``data_files`` value for the model's current time.
 
@@ -181,6 +190,8 @@ The mapping is **many-to-many**, not strictly one-to-one:
 
 ``hydro/tools/convert_sourcesink_mapping.py`` converts pySCHISM-style ``sources.json``/``sinks.json`` (``{element_id: [flow_id, ...]}``) directly into this format, merging both files and computing the even-split ``weight`` automatically for any flow id that ends up targeting more than one element.
 
+``hydro/tools/plot_export_map.py``/``plot_export_animation.py`` read this mode's VTK output (combining every PET's file for a timestamp, since each only holds its own partition of the target mesh) and plot the mapped elements' locations/values on a map, as a single snapshot or an animated time series — useful for a quick visual sanity check of a mapping file, alongside the same scripts' own built-in correctness report (duplicate-ownership and mapping-file/non-fill-count checks).
+
 Paired with, in ``ufs.configure`` (note ``ExportType`` is ``'mesh'`` here, not ``'locstream'``, and ``ExportMeshFile`` is the target mesh itself — e.g. an ocean model's grid, not anything built from ``coord_file``):
 
 .. code-block:: text
@@ -240,7 +251,7 @@ Each call to ``geogate_phases_hydro_run``:
 
 A single ``data_files`` entry spanning many time records (``ndims > 1``) works exactly like many single-record files — ``data_files`` can hold just one combined file instead of one entry per timestep, and ``time_variable`` then needs just one CF ``units`` attribute covering every record in it. Verified directly: merging NWM's 24 separate hourly ``channel_rt`` files into one file (``streamflow(time, feature_id)``, 24 time records) and reconfiguring ``data_files`` to point at it alone, with ``time_selection: linear``, reproduced byte-identical output against the original 24-separate-file configuration (319,324,870 values checked across every PET and every coupling step).
 
-**Packed/scaled variables.** Each configured variable's on-disk type, rank, and CF packing attributes (``scale_factor``, ``add_offset``, ``_FillValue``/``missing_value``) are read once (``geogate_hydro_io``: ``HydroReadVarMeta``, from ``data_files(1)`` only) and assumed identical across all ``data_files`` — consistent with the "multiple files following each other" use case, but a data source whose packing changes file-to-file isn't supported. Raw values are unpacked as ``value = raw*scale_factor + add_offset``, with fill/missing cells mapped to GeoGate's own fill sentinel (``geogate_share::fillValue``, ``1.0d20``).
+**Packed/scaled variables.** Each configured variable's on-disk type, rank, and CF packing attributes (``scale_factor``, ``add_offset``, ``_FillValue``/``missing_value``) are read once (``geogate_hydro_io``: ``HydroReadVarMeta``, from ``data_files(1)`` only) and assumed identical across all ``data_files`` — consistent with the "multiple files following each other" use case, but a data source whose packing changes file-to-file isn't supported. ``geogate_hydro_pio``: ``PioReadVariable`` reads the raw, on-disk value as-is (type-converted, e.g. a ``short``-typed variable is widened to ``int`` losslessly, but never scaled) — PIO itself never applies CF packing conventions at any level, the same as the plain netCDF C/Fortran libraries it wraps; this is a plugin-level, not a library-level, concern. Unpacking (``value = raw*scale_factor + add_offset``) happens exactly once, in ``geogate_phases_hydro``: ``BlendAndFillFields``, applied *after* ``linear`` interpolates the still-raw bracket values — safe since scale/offset is an affine transform and interpolation is linear, so the two operations commute regardless of order. Fill/missing cells are mapped to GeoGate's own fill sentinel (``geogate_share::fillValue``, ``1.0d20``).
 
 ===============
 Build Gotchas

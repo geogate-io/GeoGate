@@ -91,10 +91,16 @@ value on a log scale -- a quick visual sanity check for an
 `convert_sourcesink_mapping.py`). Each PET's file holds the full mesh but
 only fills in values for the elements it owns; combining all PET files for
 one timestamp and keeping only non-fill elements recovers every mapped
-element exactly once. It also prints a correctness report (PET file/cell
-counts, duplicate-ownership check, and, with `--mapping-file`, a check that
-the non-fill element count matches the mapping file's own unique-element
-count).
+element exactly once. Also draws the full mesh outline as a faded grey
+backdrop (`--no-mesh` to skip it) -- every PET file for a timestamp only
+holds its own partition of the mesh, so all of them are combined to get
+the whole thing, not just one. It also prints a correctness report (PET
+file/cell counts, duplicate-ownership check, and, with `--mapping-file`, a
+check that the non-fill element count matches the mapping file's own
+unique-element count); by default the script exits non-zero if that check
+finds a problem (`--no-strict` to only warn), which is what lets the
+`test_hydro.yaml` CI workflow (see `docs/source/testing.rst`) use this
+script as a CI gate, not just a plotting tool.
 
 ### Requirements
 
@@ -117,6 +123,8 @@ python3 plot_export_map.py --vtk-dir /path/to/run \
 | `--field` | the only one found | Field name to plot, if more than one is present |
 | `--mapping-file` | (optional) | `export_element_map_file` to cross-check the non-fill element count against |
 | `--output` | `export_map.png` | Output image path |
+| `--no-mesh` | off | Don't draw the mesh outline backdrop |
+| `--no-strict` | off | Exit 0 even if the correctness check finds a problem (default: exit 1) |
 
 ## plot_export_animation.py
 
@@ -124,10 +132,14 @@ Same VTK source as `plot_export_map.py` above, but loops over every
 timestamp available for a field, draws one frame per timestamp (same
 coastline-map style, with the mapped-element count and timestamp in the
 title), and combines them into an animated GIF -- useful for watching a
-run's mapped values evolve instead of looking at a single snapshot. Runs
-the same correctness checks (duplicate-ownership, optional
-`--mapping-file` element-count cross-check) across every frame, not just
-one.
+run's mapped values evolve instead of looking at a single snapshot. Draws
+the same mesh-outline backdrop as `plot_export_map.py` (`--no-mesh` to
+skip it), computed once and reused for every frame since the mesh itself
+doesn't change over time. Runs the same correctness checks
+(duplicate-ownership, optional `--mapping-file` element-count
+cross-check) across every frame, not just one -- but, unlike
+`plot_export_map.py`, only ever prints them (no `--no-strict`/exit-code
+gating here, since this script isn't used as a CI check).
 
 ### Requirements
 
@@ -152,6 +164,7 @@ python3 plot_export_animation.py --vtk-dir /path/to/run \
 | `--fps` | `2.0` | Playback speed (frames per second) |
 | `--dpi` | `120` | Frame resolution |
 | `--keep-frames` | (optional) | Directory to also save the individual PNG frames into (default: a temporary directory, cleaned up afterward) |
+| `--no-mesh` | off | Don't draw the mesh outline backdrop |
 
 ## mesh_nwm.py
 
