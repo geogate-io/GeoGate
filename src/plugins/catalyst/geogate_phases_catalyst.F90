@@ -24,7 +24,7 @@ module geogate_phases_catalyst
   use catalyst_api
   use catalyst_conduit
 
-  use geogate_share, only: ChkErr, StringSplit
+  use geogate_share, only: ChkErr, AttributeGetList
   use geogate_types, only: IngestMeshData, meshType
   use geogate_share, only: rad2Deg, deg2Rad, constHalfPi
   use geogate_share, only: debugMode
@@ -133,13 +133,12 @@ contains
        call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
 
        ! Query name of Catalyst script
-       call NUOPC_CompAttributeGet(gcomp, name="CatalystScripts", value=cvalue, &
-         isPresent=isPresent, isSet=isSet, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       if (isPresent .and. isSet) then
-          scriptNames = StringSplit(trim(cvalue), ":")
+       scriptNames = AttributeGetList(gcomp, name="CatalystScripts", rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       if (size(scriptNames, dim=1) > 0) then
           do n = 1, size(scriptNames, dim=1)
-             write(message, fmt='(A,I1,A)') trim(subname)//": CatalystScript (", n, ") = "//trim(scriptNames(n))
+             write(message, fmt='(A,I1,A)') trim(subname)//": CatalystScripts (", n, ") = "//trim(scriptNames(n))
              call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
           end do
        endif

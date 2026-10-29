@@ -1,0 +1,79 @@
+name: Fetch Hydro Plugin Test Data
+author: Ufuk Turuncoglu
+description: 'Download (or restore from cache) the NWM CHRTOUT and RouteLink files used by the hydro plugin CI test'
+inputs:
+  install_dir:
+    description: 'Directory to fetch data into (CHRTOUT/ and v3.0_par/ subdirectories are created here)'
+    required: true
+    type: string
+  geogate_dir:
+    description: 'Directory of the checked-out GeoGate repository (for hydro/tools/download_nwm_retrospective.py)'
+    required: true
+    type: string
+  start:
+    description: 'First CHRTOUT timestamp to download (download_nwm_retrospective.py --start)'
+    required: false
+    type: string
+    default: '2021-06-01T00:00'
+  end:
+    description: 'Last CHRTOUT timestamp to download (download_nwm_retrospective.py --end)'
+    required: false
+    type: string
+    default: '2021-06-01T03:00'
+  routelink_url:
+    description: 'URL of the NWM parameter files tarball containing v3.0_par/RouteLink_CONUS.nc'
+    required: false
+    type: string
+    default: 'https://www.nohrsc.noaa.gov/owp_files/nwm/nwm_parameters/NWM_parameter_files_v3.0.tar.gz'
+
+runs:
+  using: composite
+  steps:
+  - name: Restore CHRTOUT Cache
+    id: restore-chrtout
+    uses: actions/cache/restore@v4
+    with:
+      path: ${{ inputs.install_dir }}/CHRTOUT
+      key: nwm-chrtout-${{ inputs.start }}-${{ inputs.end }}-v1
+
+  - name: Download CHRTOUT
+    if: steps.restore-chrtout.outputs.cache-hit != 'true'
+    run: |
+      python3 -m pip install --user --quiet requests
+      cd ${{ inputs.install_dir }}
+      python3 ${{ inputs.geogate_dir }}/src/plugins/hydro/tools/download_nwm_retrospective.py \
+        --start "${{ inputs.start }}" --end "${{ inputs.end }}" --outdir CHRTOUT
+    shell: bash
+
+  - name: Save CHRTOUT Cache
+    if: steps.restore-chrtout.outputs.cache-hit != 'true'
+    uses: actions/cache/save@v4
+    with:
+      path: ${{ inputs.install_dir }}/CHRTOUT
+      key: nwm-chrtout-${{ inputs.start }}-${{ inputs.end }}-v1
+
+  - name: Restore RouteLink Cache
+    id: restore-routelink
+    uses: actions/cache/restore@v4
+    with:
+      path: ${{ inputs.install_dir }}/v3.0_par/RouteLink_CONUS.nc
+      key: nwm-routelink-conus-v3.0-v1
+
+  # RouteLink_CONUS.nc is one member of a much larger (~4.7GB) tarball; tar
+  # can extract a single named member while streaming, without ever writing
+  # the rest of the archive to disk (verified: ~90s, 269MB extracted). This
+  # only runs once -- afterward it's served from the cache above.
+  - name: Download and Extract RouteLink_CONUS.nc
+    if: steps.restore-routelink.outputs.cache-hit != 'true'
+    run: |
+      mkdir -p ${{ inputs.install_dir }}/v3.0_par
+      cd ${{ inputs.install_dir }}
+      curl -sL --fail "${{ inputs.routelink_url }}" | tar -xzf - v3.0_par/RouteLink_CONUS.nc
+    shell: bash
+
+  - name: Save RouteLink Cache
+    if: steps.restore-routelink.outputs.cache-hit != 'true'
+    uses: actions/cache/save@v4
+    with:
+      path: ${{ inputs.install_dir }}/v3.0_par/RouteLink_CONUS.nc
+      key: nwm-routelink-conus-v3.0-v1
