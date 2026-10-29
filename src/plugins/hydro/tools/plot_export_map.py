@@ -190,6 +190,10 @@ def collect_elements(paths, field):
 
 
 def print_report(report, mapping_file):
+    """Prints the correctness report and returns True iff nothing was wrong
+    (no duplicate-ownership elements, consistent cell counts, and -- if
+    mapping_file was given -- its unique-element count matches)."""
+    ok = True
     print("VTK correctness check:")
     print(f"  PET files combined        : {report['n_pet_files']}")
     print(f"  cells per PET file        : {sorted(set(report['ncells_per_pet']))}")
@@ -198,10 +202,12 @@ def print_report(report, mapping_file):
     if report["duplicate_elems"]:
         print(f"  WARNING: {len(report['duplicate_elems'])} element id(s) appeared as "
               f"non-fill in more than one PET file: {sorted(set(report['duplicate_elems']))[:10]}...")
+        ok = False
     else:
         print("  each non-fill element owned by exactly one PET (no duplicates) - OK")
     if len(set(report["ncells_per_pet"])) > 1:
         print("  WARNING: PET files disagree on total cell count -- not all from the same mesh/run?")
+        ok = False
     if mapping_file:
         unique_elems = set()
         with open(mapping_file) as f:
@@ -215,6 +221,8 @@ def print_report(report, mapping_file):
             print("  matches non-fill element count - OK")
         else:
             print("  MISMATCH vs non-fill element count -- check mapping/export config")
+            ok = False
+    return ok
 
 
 def marker_size(value, floor=1.0, min_size=10.0, size_per_decade=90.0):
@@ -290,6 +298,8 @@ def main():
                          "non-fill element count against (optional)")
     parser.add_argument("--output", default="export_map.png", help="output image path")
     parser.add_argument("--no-mesh", action="store_true", help="don't draw the mesh outline backdrop")
+    parser.add_argument("--no-strict", action="store_true", help="exit 0 even if the correctness "
+                         "check finds a problem (default: exit 1, for use as a CI gate)")
     args = parser.parse_args()
 
     groups = discover_files(args.vtk_dir)
@@ -312,12 +322,15 @@ def main():
                           f"available timestamps: {timestamps}")
 
     rows, report = collect_elements(groups[key], field)
-    print_report(report, args.mapping_file)
+    ok = print_report(report, args.mapping_file)
     if not rows:
         raise SystemExit("no non-fill elements found -- nothing to plot")
 
     mesh_segments = None if args.no_mesh else load_mesh_segments(sorted(groups[key]))
     make_plot(rows, timestamp, field, args.output, mesh_segments=mesh_segments)
+
+    if not ok and not args.no_strict:
+        raise SystemExit("correctness check failed (see warnings above)")
 
 
 if __name__ == "__main__":

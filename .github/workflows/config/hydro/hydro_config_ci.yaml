@@ -1,0 +1,28 @@
+hydro:
+  coord_file: "v3.0_par/RouteLink_CONUS.nc"
+  id_variable: "link"
+  lat_variable: "lat"
+  lon_variable: "lon"
+  order_variable: "ascendingIndex"
+
+  # NWM Retrospective v3.0 CHRTOUT files (CONUS, hourly) -- fetched by the
+  # fetch_hydro_data action via hydro/tools/download_nwm_retrospective.py.
+  data_files:
+    - "CHRTOUT/202106010000.CHRTOUT_DOMAIN1"
+    - "CHRTOUT/202106010100.CHRTOUT_DOMAIN1"
+    - "CHRTOUT/202106010200.CHRTOUT_DOMAIN1"
+    - "CHRTOUT/202106010300.CHRTOUT_DOMAIN1"
+  time_variable: "time"
+
+  # The 3-hour test run couples at a finer interval (720s) than the hourly
+  # data, so linear interpolation is exercised on nearly every step.
+  time_selection: linear
+
+  variables:
+    - streamflow:Fall_roff
+
+  # Map flow ids onto a SCHISM mesh's elements (pre-generated via
+  # hydro/tools/convert_sourcesink_mapping.py; see docs/source/hydro.rst:
+  # Export Side). ExportType/ExportMeshFile are set on the ROF component in
+  # esmxRun.yaml, not here.
+  export_element_map_file: "mapping.txt"
