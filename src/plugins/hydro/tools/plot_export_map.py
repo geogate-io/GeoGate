@@ -130,6 +130,35 @@ def xyz_to_lonlat(xyz):
     return lon, lat
 
 
+def load_mesh_segments(paths):
+    """Every cell edge across all of a timestamp's PET files, as
+    ((lon1,lat1),(lon2,lat2)) segments. Each PET file only holds ITS OWN
+    partition of the mesh (confirmed via _ELEM_NUM: e.g. a 4-PET, ~165k
+    element mesh splits into 4 contiguous, non-overlapping ~41k-element
+    ranges, one per PET file, each with fully valid local geometry) -- so
+    every PET file for the timestamp must be combined to get the whole
+    mesh, not just one."""
+    if isinstance(paths, str):
+        paths = [paths]
+    segments = []
+    for path in paths:
+        points, cell_nodes, _, _, _ = parse_vtk(path)
+        lon, lat = xyz_to_lonlat(points)
+        for nodes in cell_nodes:
+            n = len(nodes)
+            for i in range(n):
+                a, b = nodes[i], nodes[(i + 1) % n]
+                segments.append(((lon[a], lat[a]), (lon[b], lat[b])))
+    return segments
+
+
+def segments_bbox(segments):
+    """(lon_min, lon_max, lat_min, lat_max) spanning every segment endpoint."""
+    lons = [pt[0] for seg in segments for pt in seg]
+    lats = [pt[1] for seg in segments for pt in seg]
+    return min(lons), max(lons), min(lats), max(lats)
+
+
 def collect_elements(paths, field):
     """Combine all PET files for one timestamp into one array of
     (elem_num, lon, lat, value) for non-fill elements, plus a correctness
@@ -199,31 +228,41 @@ def marker_size(value, floor=1.0, min_size=10.0, size_per_decade=90.0):
     return min_size + size_per_decade * np.log10(v / floor)
 
 
-def make_plot(rows, timestamp, field, output):
+def make_plot(rows, timestamp, field, output, mesh_segments=None):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
+    from matplotlib.collections import LineCollection
 
     lons = np.array([r[1] for r in rows])
     lats = np.array([r[2] for r in rows])
     vals = np.array([r[3] for r in rows])
 
     pad = 0.3
-    extent = [lons.min() - pad, lons.max() + pad, lats.min() - pad, lats.max() + pad]
+    lon_min, lon_max, lat_min, lat_max = lons.min(), lons.max(), lats.min(), lats.max()
+    if mesh_segments:
+        mlon_min, mlon_max, mlat_min, mlat_max = segments_bbox(mesh_segments)
+        lon_min, lon_max = min(lon_min, mlon_min), max(lon_max, mlon_max)
+        lat_min, lat_max = min(lat_min, mlat_min), max(lat_max, mlat_max)
+    extent = [lon_min - pad, lon_max + pad, lat_min - pad, lat_max + pad]
 
     fig = plt.figure(figsize=(8, 8))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent(extent, crs=ccrs.PlateCarree())
-    ax.add_feature(cfeature.LAND, facecolor="#f0ead6")
-    ax.add_feature(cfeature.OCEAN, facecolor="#d9e9f5")
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
+    ax.add_feature(cfeature.LAND.with_scale("10m"), facecolor="#f0ead6")
+    ax.add_feature(cfeature.OCEAN.with_scale("10m"), facecolor="#d9e9f5")
+    ax.add_feature(cfeature.COASTLINE.with_scale("10m"), linewidth=0.8)
     ax.add_feature(cfeature.STATES.with_scale("10m"), linewidth=0.5, edgecolor="gray")
     ax.add_feature(cfeature.RIVERS.with_scale("10m"), linewidth=0.5, edgecolor="steelblue", alpha=0.6)
     gl = ax.gridlines(draw_labels=True, linewidth=0.3, alpha=0.4)
     gl.top_labels = False
     gl.right_labels = False
+
+    if mesh_segments:
+        ax.add_collection(LineCollection(mesh_segments, colors="grey", linewidths=0.3, alpha=0.35,
+                                          transform=ccrs.PlateCarree(), zorder=2))
 
     ax.scatter(lons, lats, s=marker_size(vals), c="#2060c0", alpha=0.7,
                edgecolor="black", linewidth=0.3, transform=ccrs.PlateCarree(), zorder=5)
@@ -250,6 +289,7 @@ def main():
     parser.add_argument("--mapping-file", help="export_element_map_file to cross-check the "
                          "non-fill element count against (optional)")
     parser.add_argument("--output", default="export_map.png", help="output image path")
+    parser.add_argument("--no-mesh", action="store_true", help="don't draw the mesh outline backdrop")
     args = parser.parse_args()
 
     groups = discover_files(args.vtk_dir)
@@ -276,7 +316,8 @@ def main():
     if not rows:
         raise SystemExit("no non-fill elements found -- nothing to plot")
 
-    make_plot(rows, timestamp, field, args.output)
+    mesh_segments = None if args.no_mesh else load_mesh_segments(sorted(groups[key]))
+    make_plot(rows, timestamp, field, args.output, mesh_segments=mesh_segments)
 
 
 if __name__ == "__main__":

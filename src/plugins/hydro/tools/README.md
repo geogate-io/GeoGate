@@ -118,6 +118,41 @@ python3 plot_export_map.py --vtk-dir /path/to/run \
 | `--mapping-file` | (optional) | `export_element_map_file` to cross-check the non-fill element count against |
 | `--output` | `export_map.png` | Output image path |
 
+## plot_export_animation.py
+
+Same VTK source as `plot_export_map.py` above, but loops over every
+timestamp available for a field, draws one frame per timestamp (same
+coastline-map style, with the mapped-element count and timestamp in the
+title), and combines them into an animated GIF -- useful for watching a
+run's mapped values evolve instead of looking at a single snapshot. Runs
+the same correctness checks (duplicate-ownership, optional
+`--mapping-file` element-count cross-check) across every frame, not just
+one.
+
+### Requirements
+
+Same as `plot_export_map.py` (`numpy`, `matplotlib`, `cartopy`), plus
+`Pillow` for GIF assembly -- all present in NCAR's `npl` conda env. Must
+be run from (or with) `plot_export_map.py` on the Python path, since it
+imports its VTK-parsing and marker-sizing functions from it.
+
+### Usage
+
+```
+python3 plot_export_animation.py --vtk-dir /path/to/run \
+    --mapping-file mapping/mapping.txt --output export_map.gif
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--vtk-dir` | `.` | Directory containing the `*.vtk` files |
+| `--field` | the only one found | Field name to plot, if more than one is present |
+| `--mapping-file` | (optional) | `export_element_map_file` to cross-check each frame's non-fill element count against |
+| `--output` | `export_map.gif` | Output animated GIF path |
+| `--fps` | `2.0` | Playback speed (frames per second) |
+| `--dpi` | `120` | Frame resolution |
+| `--keep-frames` | (optional) | Directory to also save the individual PNG frames into (default: a temporary directory, cleaned up afterward) |
+
 ## mesh_nwm.py
 
 Builds an ESMF unstructured-mesh netCDF file from a coordinate file's
