@@ -165,6 +165,22 @@ jobs:
           --vtk-dir . --mapping-file mapping.txt --output export_map.png
       shell: bash
 
+    - name: Sanitize Output Filenames for Upload
+      # GeoGate's VTK/CSV writers embed an ISO timestamp (e.g. "...T00:00:00...")
+      # in their output filenames; actions/upload-artifact rejects colons
+      # outright (NTFS-safety restriction), so every such file would otherwise
+      # fail to upload. Runs after plotting (which needs the original,
+      # colon-containing names to match) and with always() so it still
+      # sanitizes whatever partial output exists even if Run Case failed.
+      if: ${{ always() }}
+      run: |
+        cd ${{ github.workspace }}/app
+        for f in *:*; do
+          [ -e "$f" ] || continue
+          mv -- "$f" "$(echo "$f" | tr ':' '-')"
+        done
+      shell: bash
+
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       if: ${{ always() }}
@@ -173,6 +189,7 @@ jobs:
         path: |
           ${{ github.workspace }}/app/*.png
           ${{ github.workspace }}/app/*.vtk
+          ${{ github.workspace }}/app/PET*
           ${{ github.workspace }}/app/out_err.txt
           ${{ github.workspace }}/app/*.log
         retention-days: 2
