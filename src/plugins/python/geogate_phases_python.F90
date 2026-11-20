@@ -40,6 +40,7 @@ module geogate_phases_python
   !-----------------------------------------------------------------------------
 
   public :: geogate_phases_python_run
+  public :: geogate_phases_python_datainit
 
   !-----------------------------------------------------------------------------
   ! Private module routines
@@ -263,6 +264,41 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_python_run
+
+  !-----------------------------------------------------------------------------
+
+  subroutine geogate_phases_python_datainit(gcomp, rc)
+
+    ! Self-checking wrapper called directly (no NUOPC registration) from
+    ! geogate_nuopc's DataInitialize. No-ops when this instance has no
+    ! PythonScripts, i.e. the python plugin isn't the one configured to
+    ! run here.
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    character(ESMF_MAXSTR), allocatable :: scriptNames(:)
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_python_datainit) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    scriptNames = AttributeGetList(gcomp, name="PythonScripts", rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (size(scriptNames, dim=1) > 0) then
+       call geogate_phases_python_run(gcomp, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    else
+       call ESMF_LogWrite(subname//' PythonScripts not set, skipping', ESMF_LOGMSG_INFO)
+    end if
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_python_datainit
 
   !-----------------------------------------------------------------------------
 

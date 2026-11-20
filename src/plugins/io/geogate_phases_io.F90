@@ -36,6 +36,7 @@ module geogate_phases_io
   public :: geogate_phases_io_init
   public :: geogate_phases_io_run
   public :: geogate_phases_io_final
+  public :: geogate_phases_io_datainit
 
   !-----------------------------------------------------------------------------
   ! Private module routines
@@ -73,7 +74,8 @@ contains
     !---------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
-    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+    call ESMF_LogWrite(subname//' called (no-op)', ESMF_LOGMSG_INFO)
+
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_io_init
@@ -167,6 +169,28 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_io_run
+
+  !-----------------------------------------------------------------------------
+
+  subroutine geogate_phases_io_datainit(gcomp, rc)
+
+    ! Called directly (no NUOPC registration) from geogate_nuopc's
+    ! DataInitialize. The io plugin only consumes/writes out imported
+    ! fields -- it never computes or fills export data -- so there is
+    ! nothing for it to do at init time; always a no-op.
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_io_datainit) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called (no-op)', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_io_datainit
 
   !-----------------------------------------------------------------------------
 

@@ -4,7 +4,7 @@ module geogate_phases_hydro
   ! Void phase for hydrology data ingestion
   !-----------------------------------------------------------------------------
 
-  use ESMF, only: ESMF_GridComp, ESMF_LogWrite, ESMF_FAILURE
+  use ESMF, only: ESMF_GridComp, ESMF_LogWrite, ESMF_FAILURE, ESMF_SUCCESS
   use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_LOGMSG_INFO
 
   implicit none
@@ -15,6 +15,7 @@ module geogate_phases_hydro
   !-----------------------------------------------------------------------------
 
   public :: geogate_phases_hydro_run
+  public :: geogate_phases_hydro_datainit
 
   !-----------------------------------------------------------------------------
   ! Private module routines
@@ -50,5 +51,24 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_hydro_run
+
+  !-----------------------------------------------------------------------------
+
+  subroutine geogate_phases_hydro_datainit(gcomp, rc)
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_hydro_datainit) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called (void, no-op)', ESMF_LOGMSG_INFO)
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_hydro_datainit
 
 end module geogate_phases_hydro

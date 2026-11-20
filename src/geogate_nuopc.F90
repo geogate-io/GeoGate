@@ -72,10 +72,10 @@ module geogate_nuopc
   use geogate_internalstate, only: InternalState
   use geogate_internalstate, only: InternalStateInit 
 
-  use geogate_phases_io, only: geogate_phases_io_run
-  use geogate_phases_python, only: geogate_phases_python_run
-  use geogate_phases_catalyst, only: geogate_phases_catalyst_run
-  use geogate_phases_hydro, only: geogate_phases_hydro_run
+  use geogate_phases_io, only: geogate_phases_io_run, geogate_phases_io_datainit
+  use geogate_phases_python, only: geogate_phases_python_run, geogate_phases_python_datainit
+  use geogate_phases_catalyst, only: geogate_phases_catalyst_run, geogate_phases_catalyst_datainit
+  use geogate_phases_hydro, only: geogate_phases_hydro_run, geogate_phases_hydro_datainit
 
   implicit none
   private
@@ -103,6 +103,25 @@ module geogate_nuopc
   character(len=ESMF_MAXSTR), allocatable :: exportFieldNameList(:)
   character(len=*), parameter :: modName = "(geogate_nuopc)"
   character(len=*), parameter :: u_FILE_u = __FILE__
+
+  ! Parametrized dispatch table for the per-plugin *_datainit routines called
+  ! from DataInitialize (see DataInitialize): each plugin self-checks its own
+  ! configuration attribute and either calls its own _run routine or no-ops,
+  ! so this table can simply call every entry unconditionally.
+  abstract interface
+     subroutine datainit_interface(gcomp, rc)
+        import :: ESMF_GridComp
+        type(ESMF_GridComp)  :: gcomp
+        integer, intent(out) :: rc
+     end subroutine datainit_interface
+  end interface
+
+  type :: datainit_entry
+     character(len=32) :: name = ''
+     procedure(datainit_interface), pointer, nopass :: proc => null()
+  end type datainit_entry
+
+  type(datainit_entry), save :: dataInitTable(4)
 
 !===============================================================================
 contains
@@ -776,6 +795,7 @@ contains
     type(ESMF_Time) :: currTime
     logical :: isPresent, isSet
     logical, save :: first_call = .true.
+    logical, save :: datainit_done = .false.
     character(len=255) :: cvalue
     character(len=255) :: msg
     character(len=*), parameter :: subname = trim(modName)//':(DataInitialize) '
@@ -803,11 +823,27 @@ contains
           end if
        end do
 
+       ! Populate the per-plugin DataInitialize dispatch table (see module-level
+       ! datainit_entry/dataInitTable declarations)
+       dataInitTable(1) = datainit_entry('io', geogate_phases_io_datainit)
+       dataInitTable(2) = datainit_entry('python', geogate_phases_python_datainit)
+       dataInitTable(3) = datainit_entry('catalyst', geogate_phases_catalyst_datainit)
+       dataInitTable(4) = datainit_entry('hydro', geogate_phases_hydro_datainit)
+
        ! Set first call flag
        first_call = .false.
 
        ! Return
        return
+    end if
+
+    ! Give the active plugin a chance to fill the export state with real data
+    if (.not. datainit_done) then
+       do n = 1, size(dataInitTable)
+          call dataInitTable(n)%proc(gcomp, rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+       datainit_done = .true.
     end if
 
     ! Loop over fields in export state and and initialize their time stamps

@@ -37,6 +37,7 @@ module geogate_phases_hydro
   !-----------------------------------------------------------------------------
 
   public :: geogate_phases_hydro_run
+  public :: geogate_phases_hydro_datainit
 
   !-----------------------------------------------------------------------------
   ! Private module data (built once on the first call, reused thereafter)
@@ -226,6 +227,44 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_hydro_run
+
+  !-----------------------------------------------------------------------------
+
+  subroutine geogate_phases_hydro_datainit(gcomp, rc)
+
+    ! Self-checking wrapper called directly (no NUOPC registration) from
+    ! geogate_nuopc's DataInitialize, so the hydro plugin's export fields
+    ! carry real data from the very first coupled exchange, not just the
+    ! ESMF fill value. No-ops when this instance has no HydroConfigFile,
+    ! i.e. the hydro plugin isn't the one configured to run here.
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    logical :: isPresent, isSet
+    character(ESMF_MAXSTR) :: cvalue
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_hydro_datainit) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    call NUOPC_CompAttributeGet(gcomp, name="HydroConfigFile", value=cvalue, &
+       isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    if (isPresent .and. isSet) then
+       call geogate_phases_hydro_run(gcomp, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    else
+       call ESMF_LogWrite(subname//' HydroConfigFile not set, skipping', ESMF_LOGMSG_INFO)
+    end if
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_hydro_datainit
 
   !-----------------------------------------------------------------------------
 

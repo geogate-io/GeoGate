@@ -40,6 +40,7 @@ module geogate_phases_catalyst
   !-----------------------------------------------------------------------------
 
   public :: geogate_phases_catalyst_run
+  public :: geogate_phases_catalyst_datainit
 
   !-----------------------------------------------------------------------------
   ! Private module routines
@@ -258,6 +259,30 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine geogate_phases_catalyst_run
+
+  !-----------------------------------------------------------------------------
+
+  subroutine geogate_phases_catalyst_datainit(gcomp, rc)
+
+    ! Called directly (no NUOPC registration) from geogate_nuopc's
+    ! DataInitialize. The catalyst plugin only consumes import fields for
+    ! visualization -- it never computes or fills export data -- so there
+    ! is nothing for it to do at init time; always a no-op.
+
+    ! input/output variables
+    type(ESMF_GridComp)  :: gcomp
+    integer, intent(out) :: rc
+
+    ! local variables
+    character(len=*), parameter :: subname = trim(modName)//':(geogate_phases_catalyst_datainit) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called (no-op)', ESMF_LOGMSG_INFO)
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine geogate_phases_catalyst_datainit
 
   !-----------------------------------------------------------------------------
 
