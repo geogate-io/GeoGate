@@ -98,6 +98,16 @@ def main():
         numElementConn.long_name = "Number of nodes per element"
         numElementConn[:] = np.ones(elementCount, dtype="int32")
 
+        # Each element is a degenerate single-node "point", so its center is
+        # just that node's own coordinate. Without this, ESMF_MeshCreate
+        # (fileformat=ESMF_FILEFORMAT_ESMFMESH) builds a mesh with no element
+        # coordinates at all, which crashes any ESMF_MeshGet(elementCoords=)
+        # call downstream (e.g. CMEPS mediator history writes).
+        centerCoords = dst.createVariable("centerCoords", "f8", ("elementCount", "coordDim"))
+        centerCoords.units = "degrees"
+        centerCoords[:, 0] = lon
+        centerCoords[:, 1] = lat
+
         dst.gridType = "unstructured"
         dst.version = "0.9"
 
