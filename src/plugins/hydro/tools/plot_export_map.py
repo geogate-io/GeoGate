@@ -159,10 +159,18 @@ def segments_bbox(segments):
     return min(lons), max(lons), min(lats), max(lats)
 
 
-def collect_elements(paths, field):
+def collect_elements(paths, field, min_abs_value=0.0):
     """Combine all PET files for one timestamp into one array of
     (elem_num, lon, lat, value) for non-fill elements, plus a correctness
-    report dict."""
+    report dict.
+
+    min_abs_value additionally masks out elements whose value is within
+    that distance of zero. This matters for export configurations where
+    the field's background/unmapped value is 0.0 rather than the 1e20
+    fill sentinel (e.g. a "mesh" ExportType covering the whole domain, vs.
+    the sparse "locstream" + element-map case this sentinel check was
+    originally written for) -- without it, every background element looks
+    like "mapped data" and clutters the plot."""
     report = {"n_pet_files": len(paths), "ncells_per_pet": [], "npts_per_pet": [],
               "duplicate_elems": [], "n_nonfill": 0}
     seen = {}
@@ -173,7 +181,7 @@ def collect_elements(paths, field):
             continue
         report["ncells_per_pet"].append(len(cell_nodes))
         report["npts_per_pet"].append(points.shape[0])
-        nonfill = np.where(field_vals != FILL_VALUE)[0]
+        nonfill = np.where((field_vals != FILL_VALUE) & (np.abs(field_vals) > min_abs_value))[0]
         for idx in nonfill:
             e = int(elem_num[idx])
             nodes = np.array(cell_nodes[idx])
@@ -296,6 +304,10 @@ def main():
     parser.add_argument("--field", help="field name to plot (default: the only one found)")
     parser.add_argument("--mapping-file", help="export_element_map_file to cross-check the "
                          "non-fill element count against (optional)")
+    parser.add_argument("--min-abs-value", type=float, default=0.0, help="also mask out elements "
+                         "whose value is within this distance of zero, in addition to the 1e20 "
+                         "fill sentinel (useful when the export's background value is 0.0, e.g. "
+                         "a domain-covering 'mesh' ExportType, rather than the fill sentinel)")
     parser.add_argument("--output", default="export_map.png", help="output image path")
     parser.add_argument("--no-mesh", action="store_true", help="don't draw the mesh outline backdrop")
     parser.add_argument("--no-strict", action="store_true", help="exit 0 even if the correctness "
@@ -321,7 +333,7 @@ def main():
         raise SystemExit(f"no files for timestamp={timestamp} field={field}; "
                           f"available timestamps: {timestamps}")
 
-    rows, report = collect_elements(groups[key], field)
+    rows, report = collect_elements(groups[key], field, min_abs_value=args.min_abs_value)
     ok = print_report(report, args.mapping_file)
     if not rows:
         raise SystemExit("no non-fill elements found -- nothing to plot")

@@ -608,6 +608,7 @@ contains
     integer, allocatable :: exportSeqIndexList(:)
     character(ESMF_MAXSTR), allocatable :: itemNameList(:)
     logical :: isFound
+    character(len=ESMF_MAXSTR) :: message
     character(len=*), parameter :: subname = trim(modName)//':(BuildExportElementMapFields) '
     !---------------------------------------------------------------------------
 
@@ -632,6 +633,10 @@ contains
           end if
        end do
     end do
+
+    write(message,'(A,I0,A,I0)') 'hydro-side (flow id) matches on this PET: ', &
+       count(mapLocalHydroIndex > 0), ' of ', mapCount
+    call ESMF_LogWrite(trim(subname)//trim(message), ESMF_LOGMSG_INFO)
 
     ! Allocate the exportElementData array and a boolean array to track which export fields were found
     allocate(hasExportElementField(size(config%variableNames)))
@@ -725,6 +730,11 @@ contains
              end if
           end do
        end do
+
+       write(message,'(A,I0,A,I0,A,I0)') 'export-side (element) matches on this PET for '// &
+          trim(config%exportVarNames(n))//': ', count(mapLocalExportIndex > 0), ' of ', mapCount, &
+          ', localExportCount=', localExportCount
+       call ESMF_LogWrite(trim(subname)//trim(message), ESMF_LOGMSG_INFO)
 
        hasExportElementField(n) = .true.
     end do
