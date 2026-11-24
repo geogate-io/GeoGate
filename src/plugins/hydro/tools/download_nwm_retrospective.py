@@ -16,6 +16,7 @@ Usage:
 import argparse
 import datetime as dt
 import sys
+import time
 
 import requests
 
@@ -29,27 +30,30 @@ def hourly_range(start, end):
         t += dt.timedelta(hours=1)
 
 
-def download_one(url, dest, timeout=120):
+def download_one(url, dest, timeout=120, max_retries=3, retry_delay=10):
     if dest.exists():
         print(f"SKIP (already exists): {dest.name}")
         return True
 
     tmp = dest.with_suffix(dest.suffix + ".part")
-    try:
-        with requests.get(url, stream=True, timeout=timeout) as r:
-            if r.status_code != 200:
-                print(f"FAIL ({r.status_code}): {url}")
-                return False
-            with open(tmp, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    f.write(chunk)
-        tmp.rename(dest)
-        print(f"OK: {dest.name} ({dest.stat().st_size:,} bytes)")
-        return True
-    except requests.RequestException as e:
-        print(f"FAIL ({e}): {url}")
+    for attempt in range(1, max_retries + 1):
+        try:
+            with requests.get(url, stream=True, timeout=timeout) as r:
+                if r.status_code != 200:
+                    print(f"FAIL ({r.status_code}, attempt {attempt}/{max_retries}): {url}")
+                else:
+                    with open(tmp, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=1024 * 1024):
+                            f.write(chunk)
+                    tmp.rename(dest)
+                    print(f"OK: {dest.name} ({dest.stat().st_size:,} bytes)")
+                    return True
+        except requests.RequestException as e:
+            print(f"FAIL ({e}, attempt {attempt}/{max_retries}): {url}")
         tmp.unlink(missing_ok=True)
-        return False
+        if attempt < max_retries:
+            time.sleep(retry_delay)
+    return False
 
 
 def main():

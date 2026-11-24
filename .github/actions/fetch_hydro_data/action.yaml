@@ -68,7 +68,7 @@ runs:
     run: |
       mkdir -p ${{ inputs.install_dir }}/v3.0_par
       cd ${{ inputs.install_dir }}
-      curl -sL --fail "${{ inputs.routelink_url }}" | tar -xzf - v3.0_par/RouteLink_CONUS.nc
+      curl -sL --fail --retry 3 --retry-delay 10 "${{ inputs.routelink_url }}" | tar -xzf - v3.0_par/RouteLink_CONUS.nc
     shell: bash
 
   - name: Save RouteLink Cache

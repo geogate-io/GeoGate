@@ -132,7 +132,7 @@ jobs:
         ln -sf geogate/.github/workflows/config/hydro/hydro_config_ci.yaml .
         ln -sf geogate/.github/workflows/config/hydro/mapping.txt .
         ln -sf geogate/.github/workflows/config/hydro/hgrid_ESMF.nc .
-        wget --no-verbose https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
+        wget --no-verbose --tries=3 --waitretry=10 https://raw.githubusercontent.com/oceanmodeling/ufs-weather-model/refs/heads/feature/coastal_app/tests/parm/fd_ufs.yaml
       shell: bash
 
     - name: Run Case
