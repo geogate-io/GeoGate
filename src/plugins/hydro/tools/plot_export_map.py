@@ -181,7 +181,7 @@ def collect_elements(paths, field, min_abs_value=0.0):
             continue
         report["ncells_per_pet"].append(len(cell_nodes))
         report["npts_per_pet"].append(points.shape[0])
-        nonfill = np.where((field_vals != FILL_VALUE) & (np.abs(field_vals) > min_abs_value))[0]
+        nonfill = np.where((field_vals != FILL_VALUE) & (np.abs(field_vals) >= min_abs_value))[0]
         for idx in nonfill:
             e = int(elem_num[idx])
             nodes = np.array(cell_nodes[idx])
