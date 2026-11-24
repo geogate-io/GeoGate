@@ -9,7 +9,7 @@ env:
   esmf: 8.8.0
   paraview: 6.1.1
   spack: v1.2.1
-  catalyst_script: "pv_write.py:pv_two_channel.py" 
+  catalyst_script: "[pv_write.py, pv_two_channel.py]" 
 
 on:
   workflow_dispatch:

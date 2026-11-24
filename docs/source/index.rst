@@ -37,6 +37,7 @@ GeoGate Documentation
    :maxdepth: 2
    :numbered:
 
+   overview
    plugins
    testing
 

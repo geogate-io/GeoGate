@@ -16,6 +16,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
 option(GEOGATE_USE_CATALYST "Support to Use Catalyst for Insitu Visualization" OFF)
 option(GEOGATE_USE_PYTHON   "Support to Interact with Python"                  OFF)
+option(GEOGATE_USE_HYDRO    "Support to Ingest Hydrology Data"                 OFF)
 
 ###############################################################################
 ### Set required packages
@@ -43,6 +44,23 @@ endif()
 if(GEOGATE_USE_PYTHON)
   message("Python plugin is activated.")
   find_package(Conduit REQUIRED)
+endif()
+
+# Find NetCDF-Fortran and ParallelIO (PIO) for the hydro plugin
+if(GEOGATE_USE_HYDRO)
+  message("Hydro plugin is activated.")
+
+  find_program(NF_CONFIG nf-config REQUIRED)
+  execute_process(COMMAND ${NF_CONFIG} --includedir
+                   OUTPUT_VARIABLE NETCDF_INCLUDE_DIR
+                   OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process(COMMAND ${NF_CONFIG} --flibs
+                   OUTPUT_VARIABLE NETCDF_FORTRAN_LIBS
+                   OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+  if(NOT TARGET PIO::PIO_Fortran)
+    find_package(PIO REQUIRED COMPONENTS Fortran)
+  endif()
 endif()
 
 if(CONDUIT_PYTHON_ENABLED OR CATALYST_USE_PYTHON)
@@ -111,6 +129,15 @@ target_link_libraries(geogate PRIVATE esmf)
 add_subdirectory(plugins/io)
 add_dependencies(geogate geogate_io)
 target_link_libraries(geogate PRIVATE geogate_io)
+
+# Support for hydrology data ingestion (e.g. NWM streamflow via NetCDF/PIO)
+add_subdirectory(plugins/hydro)
+add_dependencies(geogate geogate_hydro)
+target_link_libraries(geogate PRIVATE geogate_hydro)
+if(GEOGATE_USE_HYDRO)
+  target_include_directories(geogate PUBLIC ${NETCDF_INCLUDE_DIR})
+  target_link_libraries(geogate PRIVATE ${NETCDF_FORTRAN_LIBS} PIO::PIO_Fortran)
+endif()
 
 # Support for ParaView Catalyst
 add_subdirectory(plugins/catalyst)

@@ -24,11 +24,16 @@ inputs:
     required: false
     type: string
     default: ON
+  use_hydro:
+    description: 'Activate Hydrology data ingestion support (requires PIO, via esmf+external-parallelio)'
+    required: false
+    type: string
+    default: OFF
 
 runs:
   using: composite
   steps:
-  - name: Install GeoGate 
+  - name: Install GeoGate
     run: |
       cd ${{ inputs.install_dir }}
       . ${{ inputs.spack_dir }}/share/spack/setup-env.sh
@@ -37,6 +42,13 @@ runs:
       module load esmf
       module load libcatalyst
       module load conduit
+      # esmf+external-parallelio (see create_env) installs PIO as a standalone
+      # spack package; loading its module and pointing PIO_DIR at it is a
+      # best-effort way to make find_package(PIO ...) succeed below. Harmless
+      # when GEOGATE_USE_HYDRO=OFF. May need adjusting once this is actually
+      # exercised in CI (e.g. if PIO's CMake config isn't where PIO_DIR points).
+      module load parallelio
+      export PIO_DIR=$(spack location -i parallelio)
       export COMPILER_MAJOR_VER=`echo ${{ inputs.compiler }} | awk -F@ '{print $2}' | awk -F. '{print $1}'`
       export FC=/usr/bin/gfortran-$COMPILER_MAJOR_VER
       export CC=/usr/bin/gcc-$COMPILER_MAJOR_VER
@@ -47,6 +59,8 @@ runs:
       cmake -DCMAKE_INSTALL_PREFIX=${{ inputs.install_dir }}/geogate/install \
          -DGEOGATE_USE_PYTHON=${{ inputs.use_python }} \
          -DGEOGATE_USE_CATALYST=${{ inputs.use_catalyst }} \
+         -DGEOGATE_USE_HYDRO=${{ inputs.use_hydro }} \
+         -DPIO_DIR=${PIO_DIR} \
          -DCMAKE_BUILD_TYPE=Debug \
          -DCMAKE_Fortran_FLAGS="-ffree-form -ffree-line-length-none" \
          ../src/

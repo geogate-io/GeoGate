@@ -1,0 +1,52 @@
+ESMX:
+  App:
+    globalResourceControl: true
+    logKindFlag: ESMF_LOGKIND_Multi
+    logAppendFlag: false
+    logFlush: true
+    fieldDictionary: fd_ufs.yaml
+    startTime: 2021-06-01T00:00:00
+    stopTime: 2021-06-01T03:00:00
+  Driver:
+    componentList: [ROF, OCN]
+    attributes:
+      Verbosity: low
+    runSequence: |
+      @720
+        ROF geogate_phases_hydro
+        ROF -> OCN :remapMethod=redist
+        OCN geogate_phases_io
+      @
+generalAttributes: &anchor
+  case_name: hydro_test
+  stop_n: 3
+  stop_option: nhours
+  stop_ymd: -999
+  restart_n: 1
+  restart_option: never
+  restart_ymd: -999
+# ROF: provider. Reads NWM CHRTOUT streamflow via the hydro plugin and
+# exports it (mapped onto a SCHISM mesh's elements via mapping.txt -- see
+# docs/source/hydro.rst: Export Side) as Fall_roff.
+ROF:
+  model: geogate
+  petList: 0-1
+  attributes:
+    Verbosity: low
+    Diagnostic: 0
+    HydroConfigFile: hydro_config_ci.yaml
+    ExportType: 'mesh'
+    ExportMeshFile: hgrid_ESMF.nc
+    ExportFields: [Fall_roff]
+    <<: *anchor
+# OCN: consumer. Imports Fall_roff (redistributed from ROF, no regridding --
+# both run on the same Mesh) and writes it to VTK from the import side
+# (geogate_phases_io: FBWriteVTK), independent of how ROF itself exports it.
+OCN:
+  model: geogate
+  petList: 2-3
+  attributes:
+    Verbosity: low
+    Diagnostic: 0
+    KeepFieldList: [Fall_roff]
+    <<: *anchor

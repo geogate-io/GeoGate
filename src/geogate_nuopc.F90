@@ -21,7 +21,7 @@ module geogate_nuopc
   use ESMF, only: ESMF_FIELDSTATUS_GRIDSET, ESMF_FIELDSTATUS_EMPTY
   use ESMF, only: ESMF_FIELDSTATUS_COMPLETE, ESMF_StateItem_Flag
   use ESMF, only: ESMF_STATEITEM_STATE, ESMF_STATEITEM_FIELD
-  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_METHOD_RUN
+  use ESMF, only: ESMF_LOGMSG_ERROR, ESMF_METHOD_RUN, ESMF_GEOMTYPE_LOCSTREAM
   use ESMF, only: ESMF_GeomType_Flag, ESMF_FieldStatus_Flag
   use ESMF, only: ESMF_Time, ESMF_TimeGet, ESMF_TimeInterval
   use ESMF, only: ESMF_Clock, ESMF_ClockGet, ESMF_ClockSet
@@ -30,8 +30,10 @@ module geogate_nuopc
   use ESMF, only: ESMF_DistGridGet, ESMF_DistGridConnection
   use ESMF, only: ESMF_FieldCreate, ESMF_StateIsCreated
   use ESMF, only: ESMF_GridGetCoord, ESMF_STAGGERLOC_CORNER
-  use ESMF, only: ESMF_TYPEKIND_R8, ESMF_MESHLOC_ELEMENT
+  use ESMF, only: ESMF_TYPEKIND_R8, ESMF_KIND_R8, ESMF_MESHLOC_ELEMENT
   use ESMF, only: ESMF_FieldFill, ESMF_FILEFORMAT_ESMFMESH
+  use ESMF, only: ESMF_LocStream, ESMF_LocStreamGet, ESMF_LocStreamCreate
+  use ESMF, only: ESMF_COORDSYS_SPH_DEG
 
   use NUOPC, only: NUOPC_CompDerive
   use NUOPC, only: NUOPC_CompSpecialize
@@ -50,6 +52,7 @@ module geogate_nuopc
   use NUOPC_Model, only: model_routine_Run => routine_Run
   use NUOPC_Model, only: model_label_DataInitialize => label_DataInitialize
   use NUOPC_Model, only: model_label_Advance => label_Advance
+  use NUOPC_Model, only: model_label_Finalize => label_Finalize
   use NUOPC_Model, only: label_Advertise
   use NUOPC_Model, only: label_ModifyAdvertised
   use NUOPC_Model, only: label_AcceptTransfer
@@ -64,13 +67,15 @@ module geogate_nuopc
   use geogate_share, only: StringSplit
   use geogate_share, only: debugMode
   use geogate_share, only: fillValue
+  use geogate_share, only: AttributeGetList
   
   use geogate_internalstate, only: InternalState
   use geogate_internalstate, only: InternalStateInit 
 
-  use geogate_phases_io, only: geogate_phases_io_run
-  use geogate_phases_python, only: geogate_phases_python_run
-  use geogate_phases_catalyst, only: geogate_phases_catalyst_run
+  use geogate_phases_io, only: geogate_phases_io_run, geogate_phases_io_datainit
+  use geogate_phases_python, only: geogate_phases_python_run, geogate_phases_python_datainit
+  use geogate_phases_catalyst, only: geogate_phases_catalyst_run, geogate_phases_catalyst_datainit
+  use geogate_phases_hydro, only: geogate_phases_hydro_run, geogate_phases_hydro_datainit
 
   implicit none
   private
@@ -87,6 +92,7 @@ module geogate_nuopc
   !-----------------------------------------------------------------------------
 
   private :: DataInitialize
+  private :: Finalize
   private :: SetRunClock
 
   !-----------------------------------------------------------------------------
@@ -97,6 +103,25 @@ module geogate_nuopc
   character(len=ESMF_MAXSTR), allocatable :: exportFieldNameList(:)
   character(len=*), parameter :: modName = "(geogate_nuopc)"
   character(len=*), parameter :: u_FILE_u = __FILE__
+
+  ! Parametrized dispatch table for the per-plugin *_datainit routines called
+  ! from DataInitialize (see DataInitialize): each plugin self-checks its own
+  ! configuration attribute and either calls its own _run routine or no-ops,
+  ! so this table can simply call every entry unconditionally.
+  abstract interface
+     subroutine datainit_interface(gcomp, rc)
+        import :: ESMF_GridComp
+        type(ESMF_GridComp)  :: gcomp
+        integer, intent(out) :: rc
+     end subroutine datainit_interface
+  end interface
+
+  type :: datainit_entry
+     character(len=32) :: name = ''
+     procedure(datainit_interface), pointer, nopass :: proc => null()
+  end type datainit_entry
+
+  type(datainit_entry), save :: dataInitTable(4)
 
 !===============================================================================
 contains
@@ -150,6 +175,10 @@ contains
     call NUOPC_CompSpecialize(gcomp, specLabel=model_label_DataInitialize, specRoutine=DataInitialize, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! It is used to finalize each plugin
+    call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Finalize, specRoutine=Finalize, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     ! It is used to run user specified phase to process the data
     call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specRoutine=Advance, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -174,6 +203,12 @@ contains
     call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, phaseLabelList=(/"geogate_phases_catalyst"/), userRoutine=model_routine_Run, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specPhaseLabel="geogate_phases_catalyst", specRoutine=geogate_phases_catalyst_run, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Hydro phase (e.g. NWM streamflow ingestion via NetCDF, exposed on an ESMF_LocStream)
+    call NUOPC_CompSetEntryPoint(gcomp, ESMF_METHOD_RUN, phaseLabelList=(/'geogate_phases_hydro'/), userRoutine=model_routine_Run, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call NUOPC_CompSpecialize(gcomp, specLabel=model_label_Advance, specPhaseLabel="geogate_phases_hydro", specRoutine=geogate_phases_hydro_run, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !------------------
@@ -246,20 +281,13 @@ contains
     ! Add fields to export state
     !------------------
 
-    ! Check number of export fields
-    itemCount = 0
-    call NUOPC_CompAttributeGet(gcomp, name="ExportFields", itemCount=itemCount, &
-      isPresent=isPresent, isSet=isSet, rc=rc)
+    ! Query export field list from the component attribute
+    exportFieldNameList = AttributeGetList(gcomp, name="ExportFields", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    ! Check if there are any fields to advertise
+    itemCount = size(exportFieldNameList, dim=1)
     if (itemCount > 0) then
-       ! Allocate array for field list
-       allocate(exportFieldNameList(itemCount))
-
-       ! Query for list of export fields
-       call NUOPC_CompAttributeGet(gcomp, name="ExportFields", valueList=exportFieldNameList, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
        ! Add fields to export state
        do n = 1, itemCount
           call NUOPC_Advertise(exportState, standardName=trim(exportFieldNameList(n)), &
@@ -339,17 +367,8 @@ contains
     ! Query for KeepFieldList (only list of fields will be available)
     !------------------
 
-    call NUOPC_CompAttributeGet(gcomp, name="KeepFieldList", value=cvalue, &
-      isPresent=isPresent, isSet=isSet, rc=rc)
+    fieldNamesToKeep = AttributeGetList(gcomp, name="KeepFieldList", rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    if (isPresent .and. isSet) then
-       ! Split string
-       fieldNamesToKeep = StringSplit(trim(cvalue), ":")
-       do n = 1, size(fieldNamesToKeep, dim=1)
-          write(message, fmt='(A,I2.2,A)') trim(subname)//': KeepFieldList(',n,') = '//trim(fieldNamesToKeep(n))
-          call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
-       end do
-    endif
 
     !------------------
     ! Query for RemoveFieldList (remove fields from mirrored field list)
@@ -358,28 +377,21 @@ contains
     if (size(fieldNamesToKeep, dim=1) > 0) then
        call ESMF_LogWrite(trim(subname)//': KeepFieldList is provided. Neglecting entries of RemoveFieldList!', ESMF_LOGMSG_INFO)
     else
-       call NUOPC_CompAttributeGet(gcomp, name="RemoveFieldList", value=cvalue, &
-          isPresent=isPresent, isSet=isSet, rc=rc)
+       ! Query for RemoveFieldList (remove fields from mirrored field list)
+       fieldNamesToRemove = AttributeGetList(gcomp, name="RemoveFieldList", rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       if (isPresent .and. isSet) then
-          ! Add scalar field to remove list
-          if (trim(scalar_field_name) /= '') then
-             if (trim(cvalue) == '') then
-                cvalue = trim(scalar_field_name)
-             else
-                cvalue = trim(cvalue)//':'//trim(scalar_field_name)
-             end if
-          end if
-          ! Split string
-          fieldNamesToRemove = StringSplit(trim(cvalue), ":")
-          do n = 1, size(fieldNamesToKeep, dim=1)
-             write(message, fmt='(A,I2.2,A)') trim(subname)//': RemoveFieldList(',n,') = '//trim(fieldNamesToRemove(n))
-             call ESMF_LogWrite(trim(message), ESMF_LOGMSG_INFO)
+       if (size(fieldNamesToRemove, dim=1) > 0) then
+          ! Print out field names that will be removed
+          do n = 1, size(fieldNamesToRemove, dim=1)
+             call ESMF_LogWrite(trim(subname)//': '//trim(fieldNamesToRemove(n))//' will be removed', ESMF_LOGMSG_INFO)
           end do
        else
           ! Allocate temporary array for field list
           if (trim(scalar_field_name) /= "") then
+             ! AttributeGetList call returns an zero sized empty array if the attribute is not found.
+             if (allocated(fieldNamesToRemove)) deallocate(fieldNamesToRemove)
+             ! Allocate a single element array for the scalar field name
              allocate(fieldNamesToRemove(1))
              fieldNamesToRemove(1) = trim(scalar_field_name)
           end if
@@ -610,7 +622,7 @@ contains
           ! Loop over fields and realize them
           do m = 1, itemCount
              if (itemTypeList(m) == ESMF_STATEITEM_FIELD) then
-                ! Replace grid with mesh
+                ! Replace grid with mesh, if it is required.
                 call GridToMesh(is_local%wrap%NStateImp(n), rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -623,6 +635,16 @@ contains
           ! Clean memory
           if (allocated(itemNameList)) deallocate(itemNameList)
           if (allocated(itemTypeList)) deallocate(itemTypeList)
+       end if
+
+       ! Create field bundle FBImp
+       if (ESMF_StateIsCreated(is_local%wrap%NStateImp(n), rc=rc)) then
+          ! Print debug info
+          call ESMF_LogWrite(trim(subname)//': initializing FBs for '//trim(is_local%wrap%compName(n)), ESMF_LOGMSG_INFO)
+
+          ! Create FBImp(:) with pointers directly into NStateImp(:)
+          call FB_init_pointer(is_local%wrap%NStateImp(n), is_local%wrap%FBImp(n), name='FBImp'//trim(is_local%wrap%compName(n)), rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end if
     end do
 
@@ -641,8 +663,10 @@ contains
     ! local variables
     integer :: n
     logical :: isPresent, isSet
-    type(ESMF_Field) :: meshField
     type(InternalState) :: is_local
+    type(ESMF_Field) :: field
+    real(ESMF_KIND_R8), pointer :: farrayPtr(:)
+    character(len=ESMF_MAXSTR) :: exportType
     character(len=ESMF_MAXSTR) :: mesh_file
     character(len=ESMF_MAXSTR) :: cvalue
     character(len=*), parameter :: subname = trim(modName)//':(RealizeProvided) '
@@ -656,21 +680,34 @@ contains
        call ESMF_LogWrite(trim(subname)//": ExportFields is not provided by the configuration", &
          ESMF_LOGMSG_WARNING)
        return
-    end if 
+    end if
 
-    ! Return if ESMF mesh file for export fields is not given
-    mesh_file = ""
-    call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
-      isPresent=isPresent, isSet=isSet, rc=rc)
+    ! Check export type. The valid options are "none", "mesh", and "locstream"
+    exportType = "none"
+    call NUOPC_CompAttributeGet(gcomp, name="ExportType", value=cvalue, &
+       isPresent=isPresent, isSet=isSet, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     if (isPresent .and. isSet) then
-       mesh_file = trim(cvalue)
-       call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
-    else
-       call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields. "// &
-          "Skip adding fields to export state!", ESMF_LOGMSG_WARNING)
-       return
-    endif
+       exportType = trim(cvalue)
+       call ESMF_LogWrite(trim(subname)//": ExportType = "//trim(exportType), ESMF_LOGMSG_INFO)
+    end if
+
+    ! Return if ESMF mesh file for export fields is not given
+    if (trim(exportType) /= "none") then
+       mesh_file = ""
+       call NUOPC_CompAttributeGet(gcomp, name="ExportMeshFile", value=cvalue, &
+          isPresent=isPresent, isSet=isSet, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (isPresent .and. isSet) then
+          mesh_file = trim(cvalue)
+          call ESMF_LogWrite(trim(subname)//": ExportMeshFile = "//trim(mesh_file), ESMF_LOGMSG_INFO)
+       else
+          call ESMF_LogWrite(trim(subname)//": ExportMeshFile needs to be set to add fields if exportType is 'mesh' or 'locstream'."// &
+             "Skip adding fields to export state!", ESMF_LOGMSG_ERROR)
+          rc = ESMF_FAILURE
+          return
+       end if
+    end if
 
     ! Get the internal state
     nullify(is_local%wrap)
@@ -678,31 +715,60 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! Check if export fields are requested
-    if (size(exportFieldNameList) > 0) then
-       ! Create mesh from mesh file
-       is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
+    if (size(exportFieldNameList) > 0 .and. trim(exportType) /= "none") then
        ! Query for exportState
        call NUOPC_ModelGet(gcomp, exportState=is_local%wrap%NStateExp, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-       ! Create fields
-       ! Assuming that all fields share the same grid/mesh
-       do n = 1, size(exportFieldNameList)
-          ! Create field on mesh
-          meshField = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
-            meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
+       if (trim(exportType) == "mesh") then
+          ! Create mesh from mesh file
+          is_local%wrap%meshExp = ESMF_MeshCreate(trim(mesh_file), fileformat=ESMF_FILEFORMAT_ESMFMESH, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Initialize field
-          call ESMF_FieldFill(meshField, dataFillScheme="const", const1=fillValue, rc=rc)
+          ! Create fields
+          ! Assuming that all fields share the same grid/mesh
+          do n = 1, size(exportFieldNameList)
+             ! Create field on mesh
+             field = ESMF_FieldCreate(is_local%wrap%meshExp, typekind=ESMF_TYPEKIND_R8, &
+               meshloc=ESMF_MESHLOC_ELEMENT, name=trim(exportFieldNameList(n)), rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Initialize field
+             call ESMF_FieldFill(field, dataFillScheme="const", const1=fillValue, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Realize field
+             call NUOPC_Realize(is_local%wrap%NStateExp, field=field, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+
+       else if (trim(exportType) == "locstream") then
+          ! Create locstream for export fields
+          is_local%wrap%locStreamExp = ESMF_LocStreamCreate(trim(mesh_file), &
+            fileformat=ESMF_FILEFORMAT_ESMFMESH, centerflag=.false., rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          ! Realize field
-          call NUOPC_Realize(is_local%wrap%NStateExp, field=meshField, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       end do
+          ! Create fields
+          ! Assuming that all fields share the same grid/mesh
+          do n = 1, size(exportFieldNameList)
+             ! Create field on mesh
+             field = ESMF_FieldCreate(is_local%wrap%locStreamExp, typekind=ESMF_TYPEKIND_R8, &
+               name=trim(exportFieldNameList(n)), rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Initialize field, ESMF_FieldFill does not support locStream
+             call ESMF_FieldGet(field, farrayPtr=farrayPtr, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             farrayPtr(:) = fillValue
+             nullify(farrayPtr)
+
+             ! Realize field
+             call NUOPC_Realize(is_local%wrap%NStateExp, field=field, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end do
+
+       end if
 
        ! Add field to FB for easy access
        call FB_init_pointer(is_local%wrap%NStateExp, is_local%wrap%FBExp, name='FBExp', rc=rc)
@@ -729,6 +795,7 @@ contains
     type(ESMF_Time) :: currTime
     logical :: isPresent, isSet
     logical, save :: first_call = .true.
+    logical, save :: datainit_done = .false.
     character(len=255) :: cvalue
     character(len=255) :: msg
     character(len=*), parameter :: subname = trim(modName)//':(DataInitialize) '
@@ -756,11 +823,27 @@ contains
           end if
        end do
 
+       ! Populate the per-plugin DataInitialize dispatch table (see module-level
+       ! datainit_entry/dataInitTable declarations)
+       dataInitTable(1) = datainit_entry('io', geogate_phases_io_datainit)
+       dataInitTable(2) = datainit_entry('python', geogate_phases_python_datainit)
+       dataInitTable(3) = datainit_entry('catalyst', geogate_phases_catalyst_datainit)
+       dataInitTable(4) = datainit_entry('hydro', geogate_phases_hydro_datainit)
+
        ! Set first call flag
        first_call = .false.
 
        ! Return
        return
+    end if
+
+    ! Give the active plugin a chance to fill the export state with real data
+    if (.not. datainit_done) then
+       do n = 1, size(dataInitTable)
+          call dataInitTable(n)%proc(gcomp, rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       end do
+       datainit_done = .true.
     end if
 
     ! Loop over fields in export state and and initialize their time stamps
@@ -803,6 +886,23 @@ contains
     call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
 
   end subroutine DataInitialize
+
+  !-----------------------------------------------------------------------------
+
+  subroutine Finalize(gcomp, rc)
+
+    ! input/output variables
+    type(ESMF_GridComp) :: gcomp
+    integer, intent(out) :: rc
+    character(len=*), parameter :: subname = trim(modName)//':(Finalize) '
+    !---------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_LogWrite(subname//' called', ESMF_LOGMSG_INFO)
+
+    call ESMF_LogWrite(subname//' done', ESMF_LOGMSG_INFO)
+
+  end subroutine Finalize
 
   !-----------------------------------------------------------------------------
 
@@ -891,7 +991,7 @@ contains
              return
           end if ! fieldStatus
 
-       else
+       else if (geomtype == ESMF_GEOMTYPE_MESH) then
           ! Check for field status
           if (fieldStatus == ESMF_FIELDSTATUS_GRIDSET) then
              ! Check attribute in the field
@@ -935,6 +1035,9 @@ contains
              deallocate(ungriddedUBound)
           end if ! fieldStatus
 
+       else if (geomtype == ESMF_GEOMTYPE_LOCSTREAM) then
+          call ESMF_LogWrite(trim(subname)//": geomtype is ESMF_GEOMTYPE_LOCSTREAM for "//trim(itemNameList(n)), ESMF_LOGMSG_INFO)
+
        end if ! geomType
     end do ! itemCount
 
@@ -956,8 +1059,8 @@ contains
     integer :: dimCount, tileCount, connectionCount
     type(ESMF_Grid) :: grid, newgrid
     type(ESMF_Mesh) :: mesh, newmesh
-    type(ESMF_DistGrid) :: distgrid
-    type(ESMF_DistGrid) :: elemdistgrid, newelemdistgrid
+    type(ESMF_LocStream) :: locstream, newlocstream
+    type(ESMF_DistGrid) :: distgrid, newdistgrid
     type(ESMF_Field) :: field
     type(ESMF_GeomType_Flag) :: geomtype
     type(ESMF_FieldStatus_Flag) :: fieldStatus
@@ -1113,15 +1216,15 @@ contains
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Query mesh to get decomposition information
-             call ESMF_MeshGet(mesh, elementDistGrid=elemDistGrid, rc=rc)
+             call ESMF_MeshGet(mesh, elementDistGrid=distgrid, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Create new decomposition based on existing one
-             newelemDistGrid = ESMF_DistGridCreate(elemDistGrid, balanceflag=.true., rc=rc)
+             newdistgrid = ESMF_DistGridCreate(distgrid, balanceflag=.true., rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Create new mesh with new decomposition
-             newmesh = ESMF_MeshEmptyCreate(elementDistGrid=newelemDistGrid, rc=rc)
+             newmesh = ESMF_MeshEmptyCreate(elementDistGrid=newdistgrid, rc=rc)
              if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
              ! Swap all meshes in the state
@@ -1142,11 +1245,50 @@ contains
                 else
                    call ESMF_LogWrite(trim(subname)//": NOT replacing mesh for field: "//trim(itemNameList(m)), ESMF_LOGMSG_WARNING)
                 end if ! field status
-
              end do ! fields
+          
+          else if (geomtype == ESMF_GEOMTYPE_LOCSTREAM) then
+             call ESMF_LogWrite(trim(subname)//": geomtype is ESMF_GEOMTYPE_LOCSTREAM for "//trim(itemNameList(n)), ESMF_LOGMSG_INFO)
+
+             ! Query field to get locstream
+             call ESMF_FieldGet(field, locstream=locstream, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Query locstream to get decomposition information
+             call ESMF_LocStreamGet(locstream, distgrid=distgrid, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Create new decomposition based on existing one
+             newdistgrid = ESMF_DistGridCreate(distgrid, balanceflag=.true., rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Create new locstream with new decomposition
+             newlocstream = ESMF_LocStreamCreate(distgrid=newdistgrid, coordSys=ESMF_COORDSYS_SPH_DEG, rc=rc)
+             if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+             ! Swap all locstreams in the state
+             do m = 1, itemCount
+                ! Query state to get field
+                call ESMF_StateGet(state, field=field, itemName=itemNameList(m), rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                ! Query field to get its status
+                call ESMF_FieldGet(field, status=fieldStatus, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                if (fieldStatus == ESMF_FIELDSTATUS_EMPTY .or. fieldStatus == ESMF_FIELDSTATUS_GRIDSET) then
+                   call ESMF_FieldEmptySet(field, locstream=newlocstream, rc=rc)
+                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+                   call ESMF_LogWrite(trim(subname)//": attach locstream for "//trim(itemNameList(m)), ESMF_LOGMSG_INFO)
+                else
+                   call ESMF_LogWrite(trim(subname)//": NOT replacing locstream for field: "//trim(itemNameList(m)), ESMF_LOGMSG_WARNING)
+                end if ! field status
+             end do ! fields
+
           else
              call ESMF_LogWrite(trim(subname)//": ERROR geomtype not supported ", ESMF_LOGMSG_ERROR)
-             rc=ESMF_FAILURE
+             rc = ESMF_FAILURE
              return
           end if ! geomtype
 
